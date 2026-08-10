@@ -5,7 +5,6 @@ import 'package:google_fonts/google_fonts.dart';
 
 import 'package:amora_florals_mobile/auth.dart';
 import 'package:amora_florals_mobile/services/auth_api.dart';
-import 'package:amora_florals_mobile/services/product_api.dart';
 
 void main() => runApp(const AmoraFloralsApp());
 
@@ -135,47 +134,219 @@ class F {
 // ═══════════════════════════════════════════
 // Catalog + chat data
 // ═══════════════════════════════════════════
+class SizePrice {
+  const SizePrice({required this.label, required this.priceFrom});
+  final String label;
+  final int priceFrom;
+
+  String get display {
+    final raw = priceFrom.toString();
+    final withComma = raw.length > 3
+        ? '${raw.substring(0, raw.length - 3)},${raw.substring(raw.length - 3)}'
+        : raw;
+    return '₱$withComma+';
+  }
+}
+
 class FlowerProduct {
   const FlowerProduct({
-    this.id,
-    this.sizeId,
     required this.name,
     required this.price,
     required this.rating,
     required this.reviews,
     required this.imageUrl,
     required this.category,
+    this.gallery = const [],
+    this.sizes = const [],
+    this.description =
+        'Pre-order bloom from Amora Florals. Prices may change without prior notice due to supply and seasonal fluctuations. Free greeting card included.',
+    this.note,
+    this.isStem = false,
   });
 
-  final int? id;
-  final int? sizeId;
   final String name;
   final String price;
   final String rating;
   final String reviews;
   final String imageUrl;
   final String category;
+  final List<String> gallery;
+  final List<SizePrice> sizes;
+  final String description;
+  final String? note;
+  final bool isStem;
+
+  List<String> get images => [imageUrl, ...gallery.where((g) => g != imageUrl)];
+
+  int get sortPrice {
+    if (sizes.isNotEmpty) return sizes.first.priceFrom;
+    final digits = RegExp(r'\d+').allMatches(price).map((m) => m.group(0)!).join();
+    return int.tryParse(digits) ?? 0;
+  }
 }
 
-/// Fallback while Laravel catalog loads (or if offline).
-const _fallbackProducts = <FlowerProduct>[
-  FlowerProduct(
-    name: 'Daisy',
-    price: 'Php. 125.00',
-    rating: '4.5',
-    reviews: '128',
-    imageUrl: 'https://plus.unsplash.com/premium_photo-1667867937010-77fd5161cf8d?fm=jpg&q=60&w=3000&auto=format&fit=crop',
-    category: 'flower',
-  ),
+enum CatalogSort { featured, nameAsc, priceLow, priceHigh, rating }
+
+const assortmentCategories = <(String, IconData)>[
+  ('All', Icons.grid_view_rounded),
+  ('Bouquets', Icons.local_florist_rounded),
+  ('Roses', Icons.favorite_rounded),
+  ('Stems', Icons.spa_rounded),
 ];
 
-/// Live customer catalog — filled from Laravel `/api/products`.
-List<FlowerProduct> products = List<FlowerProduct>.from(_fallbackProducts);
+String normalizeCategory(String? label) {
+  final n = (label ?? 'all').trim().toLowerCase();
+  if (n.isEmpty || n == 'all' || n == 'flower' || n == 'flowers') return 'all';
+  if (n.startsWith('bouquet')) return 'bouquets';
+  if (n.startsWith('rose')) return 'roses';
+  if (n.startsWith('stem')) return 'stems';
+  return n;
+}
 
-const flowerBoxes = [
-  'https://images.unsplash.com/photo-1487530811176-3780de880c2d?w=300',
-  'https://images.unsplash.com/photo-1561181286-d3fee7f52978?w=300',
-  'https://images.unsplash.com/photo-1490750967868-88aa4486c946?w=300',
+bool productMatchesCategory(FlowerProduct p, String category) {
+  switch (normalizeCategory(category)) {
+    case 'all':
+      return true;
+    case 'bouquets':
+      return p.category.contains('bouquet');
+    case 'roses':
+      return p.category.contains('rose');
+    case 'stems':
+      return p.isStem || p.category.contains('stem');
+    default:
+      final q = category.toLowerCase();
+      return p.name.toLowerCase().contains(q) || p.category.toLowerCase().contains(q);
+  }
+}
+
+List<FlowerProduct> catalogProducts({
+  String query = '',
+  String category = 'all',
+  CatalogSort sort = CatalogSort.featured,
+}) {
+  final q = query.trim().toLowerCase();
+  // If the typed query is itself a category word, prefer that category.
+  final queryAsCategory = normalizeCategory(q);
+  final effectiveCategory = (q.isNotEmpty && queryAsCategory != 'all' && normalizeCategory(category) == 'all')
+      ? queryAsCategory
+      : category;
+  final textQuery = (q.isNotEmpty && normalizeCategory(q) != 'all' && q == queryAsCategory) ? '' : q;
+
+  var list = products.where((p) {
+    if (!productMatchesCategory(p, effectiveCategory)) return false;
+    if (textQuery.isEmpty) return true;
+    return p.name.toLowerCase().contains(textQuery) || p.category.toLowerCase().contains(textQuery);
+  }).toList();
+
+  switch (sort) {
+    case CatalogSort.featured:
+      break;
+    case CatalogSort.nameAsc:
+      list.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    case CatalogSort.priceLow:
+      list.sort((a, b) => a.sortPrice.compareTo(b.sortPrice));
+    case CatalogSort.priceHigh:
+      list.sort((a, b) => b.sortPrice.compareTo(a.sortPrice));
+    case CatalogSort.rating:
+      list.sort((a, b) => (double.tryParse(b.rating) ?? 0).compareTo(double.tryParse(a.rating) ?? 0));
+  }
+  return list;
+}
+
+const products = <FlowerProduct>[
+  FlowerProduct(
+    name: 'China Roses Bouquet',
+    price: '₱300+',
+    rating: '4.9',
+    reviews: '86',
+    imageUrl: 'assets/images/products/china_roses.jpg',
+    gallery: ['assets/images/products/china_roses_1.jpg'],
+    category: 'bouquet rose',
+    sizes: [
+      SizePrice(label: '1pc', priceFrom: 300),
+      SizePrice(label: '3pcs', priceFrom: 800),
+      SizePrice(label: '5pcs', priceFrom: 1200),
+      SizePrice(label: '10pcs', priceFrom: 1800),
+    ],
+  ),
+  FlowerProduct(
+    name: 'Sunflower Bouquet',
+    price: '₱250+',
+    rating: '4.8',
+    reviews: '74',
+    imageUrl: 'assets/images/products/sunflower.jpg',
+    gallery: ['assets/images/products/sunflower_1.jpg'],
+    category: 'bouquet sunflower',
+    sizes: [
+      SizePrice(label: '1pc', priceFrom: 250),
+      SizePrice(label: '3pcs', priceFrom: 800),
+      SizePrice(label: '5pcs', priceFrom: 1300),
+      SizePrice(label: '10pcs', priceFrom: 1800),
+    ],
+  ),
+  FlowerProduct(
+    name: 'Gerbera / Daisy Bouquet',
+    price: '₱250+',
+    rating: '4.8',
+    reviews: '91',
+    imageUrl: 'assets/images/products/gerbera_daisy.jpg',
+    gallery: ['assets/images/products/gerbera_daisy_1.jpg'],
+    category: 'bouquet daisy gerbera',
+    sizes: [
+      SizePrice(label: '1pc', priceFrom: 250),
+      SizePrice(label: '3pcs', priceFrom: 800),
+      SizePrice(label: '5pcs', priceFrom: 1300),
+      SizePrice(label: '10pcs', priceFrom: 2000),
+    ],
+  ),
+  FlowerProduct(
+    name: 'Carnation Bouquet',
+    price: '₱250+',
+    rating: '4.7',
+    reviews: '68',
+    imageUrl: 'assets/images/products/carnation.jpg',
+    gallery: ['assets/images/products/carnation_1.jpg'],
+    category: 'bouquet carnation',
+    sizes: [
+      SizePrice(label: '1pc', priceFrom: 250),
+      SizePrice(label: '3pcs', priceFrom: 800),
+      SizePrice(label: '5pcs', priceFrom: 1300),
+      SizePrice(label: '10pcs', priceFrom: 1800),
+    ],
+  ),
+  FlowerProduct(
+    name: 'Stargazer Lilies',
+    price: '₱400',
+    rating: '4.9',
+    reviews: '52',
+    imageUrl: 'assets/images/products/stargazer_lilies.jpg',
+    gallery: ['assets/images/products/stargazer_lilies_1.jpg'],
+    category: 'stem lily',
+    isStem: true,
+    note: 'Price per stem, unarranged. Additional charges may apply if arranged as a bouquet.',
+  ),
+  FlowerProduct(
+    name: 'Sunlight Chrysanthemum',
+    price: '₱400',
+    rating: '4.7',
+    reviews: '41',
+    imageUrl: 'assets/images/products/sunlight_chrysanthemum.jpg',
+    gallery: ['assets/images/products/sunlight_chrysanthemum_1.jpg'],
+    category: 'stem chrysanthemum',
+    isStem: true,
+    note: 'Price per stem, unarranged. Additional charges may apply if arranged as a bouquet.',
+  ),
+  FlowerProduct(
+    name: 'Hydrangea',
+    price: '₱300',
+    rating: '4.8',
+    reviews: '57',
+    imageUrl: 'assets/images/products/hydrangea.jpg',
+    gallery: ['assets/images/products/hydrangea_1.jpg'],
+    category: 'stem hydrangea',
+    isStem: true,
+    note: 'Price per stem, unarranged. Additional charges may apply if arranged as a bouquet.',
+  ),
 ];
 
 class ChatThread {
@@ -220,7 +391,7 @@ List<ChatThread> seedThreads() => [
     name: 'Amora Studio',
     role: 'Boutique florist',
     avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=200',
-    preview: 'We can wrap your tulips in a blush box ✨',
+    preview: 'We can wrap your roses in a blush box ✨',
     time: '2m',
     unread: 2,
     online: true,
@@ -231,12 +402,12 @@ List<ChatThread> seedThreads() => [
         time: '10:02',
       ),
       ChatMessage(
-        text: 'Yes — soft tulips, something dreamy.',
+        text: 'Yes — soft china roses, something dreamy.',
         mine: true,
         time: '10:04',
       ),
       ChatMessage(
-        text: 'We can wrap your tulips in a blush box ✨',
+        text: 'We can wrap your roses in a blush box ✨',
         mine: false,
         time: '10:05',
       ),
@@ -786,17 +957,27 @@ class NetImage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final fallback = Container(
+      width: width,
+      height: height,
+      decoration: const BoxDecoration(gradient: LinearGradient(colors: [Dream.peach, Dream.blush])),
+      child: const Icon(Icons.local_florist_rounded, color: Dream.roseDeep),
+    );
+    if (url.startsWith('assets/')) {
+      return Image.asset(
+        url,
+        width: width,
+        height: height,
+        fit: fit,
+        errorBuilder: (context, error, stackTrace) => fallback,
+      );
+    }
     return Image.network(
       url,
       width: width,
       height: height,
       fit: fit,
-      errorBuilder: (context, error, stackTrace) => Container(
-        width: width,
-        height: height,
-        decoration: const BoxDecoration(gradient: LinearGradient(colors: [Dream.peach, Dream.blush])),
-        child: const Icon(Icons.local_florist_rounded, color: Dream.roseDeep),
-      ),
+      errorBuilder: (context, error, stackTrace) => fallback,
     );
   }
 }
@@ -930,20 +1111,20 @@ class CartScope extends InheritedNotifier<CartController> {
 
 const homeCategories = <(String, IconData)>[
   ('Bouquets', Icons.local_florist_rounded),
-  ('Tulips', Icons.spa_rounded),
   ('Roses', Icons.favorite_rounded),
+  ('Stems', Icons.spa_rounded),
 ];
 
 String? productBadge(String name) {
   switch (name) {
-    case 'Daisy':
-    case 'Tulips':
-    case 'Peony':
+    case 'China Roses Bouquet':
+    case 'Sunflower Bouquet':
       return 'Best Seller';
-    case 'Sunflower':
-    case 'Red Rose':
-    case 'Lavender':
+    case 'Gerbera / Daisy Bouquet':
+    case 'Carnation Bouquet':
       return 'Popular';
+    case 'Stargazer Lilies':
+      return 'Pre-order';
     default:
       return null;
   }
@@ -998,7 +1179,6 @@ class _MainShellState extends State<MainShell> {
   late List<ChatThread> threads;
   late WishlistController wishlist;
   late CartController cart;
-  bool catalogLoading = true;
 
   @override
   void initState() {
@@ -1006,34 +1186,6 @@ class _MainShellState extends State<MainShell> {
     threads = seedThreads();
     wishlist = WishlistController();
     cart = CartController();
-    _loadCatalog();
-  }
-
-  Future<void> _loadCatalog() async {
-    try {
-      final apiItems = await ProductApi().fetchProducts();
-      if (!mounted) return;
-      setState(() {
-        products = apiItems
-            .map(
-              (p) => FlowerProduct(
-                id: p.id,
-                sizeId: p.sizeId,
-                name: p.name,
-                price: p.priceLabel,
-                rating: p.rating,
-                reviews: p.reviews,
-                imageUrl: p.imageUrl,
-                category: p.category,
-              ),
-            )
-            .toList();
-        catalogLoading = false;
-      });
-    } catch (_) {
-      if (!mounted) return;
-      setState(() => catalogLoading = false);
-    }
   }
 
   @override
@@ -1118,7 +1270,7 @@ class _MainShellState extends State<MainShell> {
             _dreamRoute(keepWishlist(
               context,
               SearchScreen(
-                initialQuery: label.toLowerCase() == 'bouquets' ? 'flower' : label,
+                initialCategory: label,
                 onProductChat: (p) => _openInbox(productHint: p),
               ),
             )),
@@ -1505,7 +1657,7 @@ class ProfileScreen extends StatelessWidget {
   final VoidCallback onOpenWishlist;
   final VoidCallback onOpenMessages;
 
-  void _logout(BuildContext context) async {
+  Future<void> _logout(BuildContext context) async {
     await AuthApi().clearSession();
     if (!context.mounted) return;
     Navigator.of(context).pushAndRemoveUntil(
@@ -1842,13 +1994,15 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  void _search([String? q]) {
+  void _search({String? q, String category = 'all', bool openSort = false}) {
     Navigator.push(
       context,
       _dreamRoute(keepWishlist(
         context,
         SearchScreen(
           initialQuery: q ?? search.text,
+          initialCategory: category,
+          openSortOnStart: openSort,
           onProductChat: widget.onProductChat,
         ),
       )),
@@ -1915,13 +2069,13 @@ class _HomeScreenState extends State<HomeScreen> {
                                   isDense: true,
                                   border: InputBorder.none,
                                   contentPadding: EdgeInsets.zero,
-                                  hintText: "Search 'Tulips' here",
+                                  hintText: "Search 'Roses' here",
                                   hintStyle: F.ui(13, color: Dream.mist, height: 1.2),
                                 ),
                               ),
                             ),
                             BloomTap(
-                              onTap: () => _search(),
+                              onTap: () => _search(openSort: true),
                               child: const Icon(Icons.tune_rounded, color: Dream.mist, size: 18),
                             ),
                           ],
@@ -1947,7 +2101,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         for (final c in homeCategories)
                           Expanded(
                             child: BloomTap(
-                              onTap: () => _search(c.$1),
+                              onTap: () => _search(category: c.$1),
                               child: Column(
                                 children: [
                                   SoftGlass(
@@ -1978,7 +2132,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           child: Text('Trending Flowers', style: F.display(22)),
                         ),
                         BloomTap(
-                          onTap: () => _search('flower'),
+                          onTap: () => _search(category: 'All'),
                           child: Text(
                             'View All >',
                             style: F.ui(12, color: Dream.roseDeep, weight: FontWeight.w700),
@@ -2083,7 +2237,7 @@ class _DreamBannerState extends State<_DreamBanner> with SingleTickerProviderSta
                     top: 12,
                     width: 180,
                     child: NetImage(
-                      url: 'https://images.unsplash.com/photo-1490750967868-88aa4486c946?w=700',
+                      url: 'assets/images/products/china_roses.jpg',
                     ),
                   ),
                   Positioned.fill(
@@ -2345,9 +2499,9 @@ class CategoriesScreen extends StatelessWidget {
         physics: const BouncingScrollPhysics(),
         children: [
           Text('Categories', style: F.script(42, color: Dream.roseDeep)),
-          Text('Pick a bloom mood', style: F.ui(13, color: Dream.mist)),
+          Text('Browse by assortment', style: F.ui(13, color: Dream.mist)),
           const SizedBox(height: 16),
-          for (final c in homeCategories) ...[
+          for (final c in assortmentCategories) ...[
             BloomTap(
               onTap: () {
                 onPick?.call(c.$1);
@@ -2367,7 +2521,22 @@ class CategoriesScreen extends StatelessWidget {
                     ),
                     const SizedBox(width: 12),
                     Expanded(
-                      child: Text(c.$1, style: F.display(20)),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(c.$1, style: F.display(20)),
+                          Text(
+                            switch (normalizeCategory(c.$1)) {
+                              'all' => '${products.length} flowers available',
+                              'bouquets' => '${catalogProducts(category: 'bouquets').length} arranged bouquets',
+                              'roses' => '${catalogProducts(category: 'roses').length} rose picks',
+                              'stems' => '${catalogProducts(category: 'stems').length} per-stem blooms',
+                              _ => 'Shop this assortment',
+                            },
+                            style: F.ui(12, color: Dream.mist),
+                          ),
+                        ],
+                      ),
                     ),
                     const Icon(Icons.chevron_right_rounded, color: Dream.mist),
                   ],
@@ -2388,10 +2557,14 @@ class SearchScreen extends StatefulWidget {
   const SearchScreen({
     super.key,
     this.initialQuery = '',
+    this.initialCategory = 'All',
+    this.openSortOnStart = false,
     required this.onProductChat,
   });
 
   final String initialQuery;
+  final String initialCategory;
+  final bool openSortOnStart;
   final ValueChanged<String> onProductChat;
 
   @override
@@ -2400,14 +2573,21 @@ class SearchScreen extends StatefulWidget {
 
 class _SearchScreenState extends State<SearchScreen> {
   late final controller = TextEditingController(text: widget.initialQuery);
-  late List<FlowerProduct> results = _filter(widget.initialQuery);
+  late String category = widget.initialCategory;
+  CatalogSort sort = CatalogSort.featured;
 
-  List<FlowerProduct> _filter(String q) {
-    final n = q.trim().toLowerCase();
-    if (n.isEmpty) return List.of(products);
-    return products
-        .where((p) => p.name.toLowerCase().contains(n) || p.category.toLowerCase().contains(n))
-        .toList();
+  List<FlowerProduct> get results => catalogProducts(
+        query: controller.text,
+        category: category,
+        sort: sort,
+      );
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.openSortOnStart) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _openSort());
+    }
   }
 
   @override
@@ -2416,8 +2596,76 @@ class _SearchScreenState extends State<SearchScreen> {
     super.dispose();
   }
 
+  String get _sortLabel => switch (sort) {
+        CatalogSort.featured => 'Featured',
+        CatalogSort.nameAsc => 'Name A–Z',
+        CatalogSort.priceLow => 'Price: Low to High',
+        CatalogSort.priceHigh => 'Price: High to Low',
+        CatalogSort.rating => 'Top rated',
+      };
+
+  void _openSort() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return ClipRRect(
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+          child: Container(
+            color: const Color(0xF5FFF8FB),
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
+            child: SafeArea(
+              top: false,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 42,
+                      height: 4,
+                      margin: const EdgeInsets.only(bottom: 16),
+                      decoration: BoxDecoration(
+                        color: Dream.rose.withValues(alpha: 0.45),
+                        borderRadius: BorderRadius.circular(99),
+                      ),
+                    ),
+                  ),
+                  Text('Sort assortment', style: F.display(22)),
+                  const SizedBox(height: 8),
+                  for (final option in CatalogSort.values)
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(
+                        switch (option) {
+                          CatalogSort.featured => 'Featured',
+                          CatalogSort.nameAsc => 'Name A–Z',
+                          CatalogSort.priceLow => 'Price: Low to High',
+                          CatalogSort.priceHigh => 'Price: High to Low',
+                          CatalogSort.rating => 'Top rated',
+                        },
+                        style: F.ui(14, weight: FontWeight.w700),
+                      ),
+                      trailing: sort == option
+                          ? const Icon(Icons.check_rounded, color: Dream.roseDeep)
+                          : null,
+                      onTap: () {
+                        setState(() => sort = option);
+                        Navigator.pop(ctx);
+                      },
+                    ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final items = results;
     return DreamWorld(
       child: Scaffold(
         backgroundColor: Colors.transparent,
@@ -2425,7 +2673,7 @@ class _SearchScreenState extends State<SearchScreen> {
           child: Column(
             children: [
               Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
                 child: Row(
                   children: [
                     BloomTap(
@@ -2444,7 +2692,7 @@ class _SearchScreenState extends State<SearchScreen> {
                         padding: const EdgeInsets.symmetric(horizontal: 12),
                         child: TextField(
                           controller: controller,
-                          onChanged: (v) => setState(() => results = _filter(v)),
+                          onChanged: (_) => setState(() {}),
                           style: F.ui(14),
                           cursorColor: Dream.roseDeep,
                           decoration: InputDecoration(
@@ -2457,47 +2705,106 @@ class _SearchScreenState extends State<SearchScreen> {
                       ),
                     ),
                     const SizedBox(width: 10),
-                    SoftGlass(
-                      radius: 16,
-                      padding: const EdgeInsets.all(10),
-                      child: const Icon(Icons.tune_rounded, size: 18, color: Dream.ink),
+                    BloomTap(
+                      onTap: _openSort,
+                      child: SoftGlass(
+                        radius: 16,
+                        padding: const EdgeInsets.all(10),
+                        child: const Icon(Icons.tune_rounded, size: 18, color: Dream.ink),
+                      ),
                     ),
                   ],
                 ),
               ),
-              Expanded(
-                child: GridView.builder(
-                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
-                  physics: const BouncingScrollPhysics(),
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 2,
-                    mainAxisSpacing: 14,
-                    crossAxisSpacing: 14,
-                    childAspectRatio: 0.62,
-                  ),
-                  itemCount: results.length,
+              SizedBox(
+                height: 44,
+                child: ListView.separated(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  scrollDirection: Axis.horizontal,
+                  itemCount: assortmentCategories.length,
+                  separatorBuilder: (context, index) => const SizedBox(width: 8),
                   itemBuilder: (context, i) {
-                    final p = results[i];
-                    return FloatIn(
-                      delay: Duration(milliseconds: i * 40),
-                      child: FlowerCard(
-                        product: p,
-                        heroTag: 'search-${p.name}',
-                        onTap: () => Navigator.push(
-                          context,
-                          _dreamRoute(keepWishlist(
-                            context,
-                            ProductDetailsScreen(
-                              product: p,
-                              onChat: () => widget.onProductChat(p.name),
-                              heroTag: 'search-${p.name}',
+                    final c = assortmentCategories[i];
+                    final on = normalizeCategory(category) == normalizeCategory(c.$1);
+                    return BloomTap(
+                      onTap: () => setState(() => category = c.$1),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 180),
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: on ? Dream.rose.withValues(alpha: 0.2) : Colors.white.withValues(alpha: 0.72),
+                          borderRadius: BorderRadius.circular(999),
+                          border: Border.all(color: on ? Dream.roseDeep : Dream.blush, width: on ? 1.5 : 1),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(c.$2, size: 16, color: on ? Dream.roseDeep : Dream.mist),
+                            const SizedBox(width: 6),
+                            Text(
+                              c.$1,
+                              style: F.ui(12, weight: FontWeight.w800, color: on ? Dream.roseDeep : Dream.ink),
                             ),
-                          )),
+                          ],
                         ),
                       ),
                     );
                   },
                 ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(18, 10, 18, 4),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        '${items.length} flower${items.length == 1 ? '' : 's'} · $_sortLabel',
+                        style: F.ui(12, color: Dream.mist, weight: FontWeight.w600),
+                      ),
+                    ),
+                    BloomTap(
+                      onTap: _openSort,
+                      child: Text('Sort', style: F.ui(12, color: Dream.roseDeep, weight: FontWeight.w800)),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: items.isEmpty
+                    ? Center(
+                        child: Text('No flowers in this assortment', style: F.ui(14, color: Dream.mist)),
+                      )
+                    : GridView.builder(
+                        padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+                        physics: const BouncingScrollPhysics(),
+                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 2,
+                          mainAxisSpacing: 14,
+                          crossAxisSpacing: 14,
+                          childAspectRatio: 0.62,
+                        ),
+                        itemCount: items.length,
+                        itemBuilder: (context, i) {
+                          final p = items[i];
+                          return FloatIn(
+                            delay: Duration(milliseconds: i * 40),
+                            child: FlowerCard(
+                              product: p,
+                              heroTag: 'search-${p.name}',
+                              onTap: () => Navigator.push(
+                                context,
+                                _dreamRoute(keepWishlist(
+                                  context,
+                                  ProductDetailsScreen(
+                                    product: p,
+                                    onChat: () => widget.onProductChat(p.name),
+                                    heroTag: 'search-${p.name}',
+                                  ),
+                                )),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
               ),
             ],
           ),
@@ -2639,13 +2946,49 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                                 Text('About ${p.name}', style: F.display(22)),
                                 const SizedBox(height: 8),
                                 Text(
-                                  'Brighten any space with their graceful petals and stunning variety of colors. Perfect for gifts, home decor, or special occasions, these timeless blooms add a touch of charm and sophistication wherever they are displayed.',
+                                  p.description,
                                   style: F.ui(13, color: Dream.mist, height: 1.55),
+                                ),
+                                if (p.note != null) ...[
+                                  const SizedBox(height: 10),
+                                  Text(
+                                    p.note!,
+                                    style: F.ui(12, color: Dream.roseDeep, weight: FontWeight.w600, height: 1.45),
+                                  ),
+                                ],
+                                const SizedBox(height: 10),
+                                Text(
+                                  'Free greeting card included ♡',
+                                  style: F.ui(12, color: Dream.roseDeep, weight: FontWeight.w700),
                                 ),
                               ],
                             ),
                           ),
                         ),
+                        if (p.sizes.isNotEmpty) ...[
+                          const SizedBox(height: 20),
+                          Text('Pre-order sizes', style: F.display(20)),
+                          const SizedBox(height: 10),
+                          SoftGlass(
+                            radius: 24,
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
+                              children: [
+                                for (final s in p.sizes)
+                                  Padding(
+                                    padding: const EdgeInsets.symmetric(vertical: 6),
+                                    child: Row(
+                                      children: [
+                                        Text(s.label, style: F.ui(14, weight: FontWeight.w700)),
+                                        const Spacer(),
+                                        Text(s.display, style: F.ui(14, color: Dream.roseDeep, weight: FontWeight.w800)),
+                                      ],
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ],
                         const SizedBox(height: 20),
                         Text('Product Description', style: F.display(20)),
                         const SizedBox(height: 10),
@@ -2663,28 +3006,34 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                                     child: const Icon(Icons.person_rounded, size: 16, color: Dream.roseDeep),
                                   ),
                                   const SizedBox(width: 10),
-                                  Text('J*********o', style: F.ui(13, weight: FontWeight.w700)),
+                                  Text('Amora Florals', style: F.ui(13, weight: FontWeight.w700)),
                                 ],
                               ),
                               const SizedBox(height: 6),
                               const StarRow(rating: '5.0'),
-                              Text('Variation: Orange', style: F.ui(11, color: Dream.mist)),
+                              Text(
+                                p.isStem ? 'Sold per stem (unarranged)' : 'Pre-order bouquet',
+                                style: F.ui(11, color: Dream.mist),
+                              ),
                               const SizedBox(height: 8),
-                              Text('Depende kung 3 yan...................', style: F.ui(13)),
+                              Text(
+                                'Prices may change without prior notice due to supply and seasonal fluctuations.',
+                                style: F.ui(13),
+                              ),
                               const SizedBox(height: 12),
                               Row(
-                                children: List.generate(
-                                  3,
-                                  (i) => Container(
-                                    margin: EdgeInsets.only(right: i < 2 ? 8 : 0),
-                                    width: 70,
-                                    height: 70,
-                                    child: ClipRRect(
-                                      borderRadius: BorderRadius.circular(14),
-                                      child: NetImage(url: p.imageUrl),
+                                children: [
+                                  for (var i = 0; i < p.images.length && i < 3; i++)
+                                    Container(
+                                      margin: EdgeInsets.only(right: i < 2 ? 8 : 0),
+                                      width: 70,
+                                      height: 70,
+                                      child: ClipRRect(
+                                        borderRadius: BorderRadius.circular(14),
+                                        child: NetImage(url: p.images[i]),
+                                      ),
                                     ),
-                                  ),
-                                ),
+                                ],
                               ),
                             ],
                           ),
@@ -2787,13 +3136,31 @@ class VariantSheet extends StatefulWidget {
 }
 
 class _VariantSheetState extends State<VariantSheet> {
-  String color = 'Orange';
-  int qty = 3;
+  late String sizeLabel;
+  int qty = 1;
   int box = 0;
-  final colors = const ['Orange', 'Red', 'Blue', 'Pink'];
+
+  @override
+  void initState() {
+    super.initState();
+    sizeLabel = widget.product.sizes.isNotEmpty ? widget.product.sizes.first.label : '1 stem';
+  }
+
+  SizePrice? get selectedSize {
+    final sizes = widget.product.sizes;
+    if (sizes.isEmpty) return null;
+    return sizes.firstWhere((s) => s.label == sizeLabel, orElse: () => sizes.first);
+  }
+
+  String get priceLabel {
+    final size = selectedSize;
+    if (size != null) return size.display;
+    return widget.product.price;
+  }
 
   @override
   Widget build(BuildContext context) {
+    final p = widget.product;
     return ClipRRect(
       borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
       child: Container(
@@ -2818,46 +3185,65 @@ class _VariantSheetState extends State<VariantSheet> {
                   children: [
                     ClipRRect(
                       borderRadius: BorderRadius.circular(16),
-                      child: NetImage(url: widget.product.imageUrl, width: 88, height: 88),
+                      child: NetImage(
+                        url: p.images[box.clamp(0, p.images.length - 1)],
+                        width: 88,
+                        height: 88,
+                      ),
                     ),
                     const SizedBox(width: 14),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(widget.product.name, style: F.display(22)),
-                          Text(widget.product.price, style: F.ui(15, color: Dream.roseDeep, weight: FontWeight.w800)),
-                          Text('$color · Qty $qty', style: F.ui(12, color: Dream.mist)),
+                          Text(p.name, style: F.display(22)),
+                          Text(priceLabel, style: F.ui(15, color: Dream.roseDeep, weight: FontWeight.w800)),
+                          Text('$sizeLabel · Qty $qty', style: F.ui(12, color: Dream.mist)),
                         ],
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 20),
-                Text('Choose Color', style: F.ui(14, weight: FontWeight.w700)),
-                const SizedBox(height: 10),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: colors.map((c) {
-                    final on = color == c;
-                    return BloomTap(
-                      onTap: () => setState(() => color = c),
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 200),
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                        decoration: BoxDecoration(
-                          color: on ? Dream.rose.withValues(alpha: 0.18) : Colors.white.withValues(alpha: 0.7),
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: on ? Dream.roseDeep : Dream.blush, width: on ? 1.6 : 1),
+                if (p.sizes.isNotEmpty) ...[
+                  const SizedBox(height: 20),
+                  Text('Choose Size', style: F.ui(14, weight: FontWeight.w700)),
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: p.sizes.map((s) {
+                      final on = sizeLabel == s.label;
+                      return BloomTap(
+                        onTap: () => setState(() => sizeLabel = s.label),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 200),
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                          decoration: BoxDecoration(
+                            color: on ? Dream.rose.withValues(alpha: 0.18) : Colors.white.withValues(alpha: 0.7),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: on ? Dream.roseDeep : Dream.blush, width: on ? 1.6 : 1),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(s.label, style: F.ui(13, color: on ? Dream.roseDeep : Dream.ink, weight: FontWeight.w800)),
+                              Text(s.display, style: F.ui(11, color: Dream.mist, weight: FontWeight.w600)),
+                            ],
+                          ),
                         ),
-                        child: Text(c, style: F.ui(13, color: on ? Dream.roseDeep : Dream.ink, weight: FontWeight.w700)),
-                      ),
-                    );
-                  }).toList(),
-                ),
+                      );
+                    }).toList(),
+                  ),
+                ] else if (p.note != null) ...[
+                  const SizedBox(height: 16),
+                  SoftGlass(
+                    radius: 16,
+                    padding: const EdgeInsets.all(12),
+                    child: Text(p.note!, style: F.ui(12, color: Dream.mist, height: 1.4)),
+                  ),
+                ],
                 const SizedBox(height: 18),
-                Text('Quantity', style: F.ui(14, weight: FontWeight.w700)),
+                Text(p.isStem ? 'Stems' : 'Quantity', style: F.ui(14, weight: FontWeight.w700)),
                 const SizedBox(height: 10),
                 SoftGlass(
                   radius: 16,
@@ -2884,38 +3270,40 @@ class _VariantSheetState extends State<VariantSheet> {
                     ),
                   ),
                 ),
-                const SizedBox(height: 18),
-                Text('Customize (Optional)', style: F.ui(14, weight: FontWeight.w700)),
-                Text('Flower Box', style: F.ui(12, color: Dream.mist)),
-                const SizedBox(height: 10),
-                Row(
-                  children: List.generate(3, (i) {
-                    final on = box == i;
-                    return Expanded(
-                      child: Padding(
-                        padding: EdgeInsets.only(right: i < 2 ? 10 : 0),
-                        child: BloomTap(
-                          onTap: () => setState(() => box = i),
-                          child: AnimatedContainer(
-                            duration: const Duration(milliseconds: 220),
-                            height: 86,
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(16),
-                              border: Border.all(color: on ? Dream.roseDeep : Dream.blush, width: on ? 2 : 1),
-                              boxShadow: on
-                                  ? [BoxShadow(color: Dream.rose.withValues(alpha: 0.25), blurRadius: 12)]
-                                  : null,
-                            ),
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(14),
-                              child: NetImage(url: flowerBoxes[i]),
+                if (p.images.length > 1) ...[
+                  const SizedBox(height: 18),
+                  Text('Photos', style: F.ui(14, weight: FontWeight.w700)),
+                  Text('Only this flower\'s looks', style: F.ui(12, color: Dream.mist)),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      for (var i = 0; i < p.images.length; i++)
+                        Expanded(
+                          child: Padding(
+                            padding: EdgeInsets.only(right: i < p.images.length - 1 ? 10 : 0),
+                            child: BloomTap(
+                              onTap: () => setState(() => box = i),
+                              child: AnimatedContainer(
+                                duration: const Duration(milliseconds: 220),
+                                height: 86,
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(16),
+                                  border: Border.all(color: box == i ? Dream.roseDeep : Dream.blush, width: box == i ? 2 : 1),
+                                  boxShadow: box == i
+                                      ? [BoxShadow(color: Dream.rose.withValues(alpha: 0.25), blurRadius: 12)]
+                                      : null,
+                                ),
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(14),
+                                  child: NetImage(url: p.images[i]),
+                                ),
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                    );
-                  }),
-                ),
+                    ],
+                  ),
+                ],
                 const SizedBox(height: 22),
                 Row(
                   children: [
@@ -2924,12 +3312,12 @@ class _VariantSheetState extends State<VariantSheet> {
                         onTap: () {
                           final cart = CartScope.of(context);
                           final messenger = ScaffoldMessenger.of(context);
-                          final name = widget.product.name;
+                          final name = p.name;
                           final n = qty;
                           Navigator.pop(context);
                           cart.add(name, n);
                           messenger.showSnackBar(
-                            SnackBar(content: Text('Added $n × $name', style: F.ui(13, color: Colors.white))),
+                            SnackBar(content: Text('Added $n × $name ($sizeLabel)', style: F.ui(13, color: Colors.white))),
                           );
                         },
                         child: Container(
@@ -2950,7 +3338,7 @@ class _VariantSheetState extends State<VariantSheet> {
                           Navigator.pop(context);
                           Navigator.push(
                             context,
-                            _dreamRoute(CartScreen(product: widget.product, quantity: qty, color: color)),
+                            _dreamRoute(CartScreen(product: p, quantity: qty, color: sizeLabel)),
                           );
                         },
                         child: Container(
@@ -2968,7 +3356,7 @@ class _VariantSheetState extends State<VariantSheet> {
                             child: FittedBox(
                               fit: BoxFit.scaleDown,
                               child: Text(
-                                widget.checkoutMode ? 'Check Out' : 'Check Out',
+                                'Check Out',
                                 style: F.ui(12, color: Colors.white, weight: FontWeight.w800),
                               ),
                             ),
@@ -3028,7 +3416,7 @@ class CartScreen extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(product.name, style: F.display(20)),
-                        Text('Color: $color · Qty: $quantity', style: F.ui(12, color: Dream.mist)),
+                        Text('Size: $color · Qty: $quantity', style: F.ui(12, color: Dream.mist)),
                         Text(product.price, style: F.ui(15, color: Dream.roseDeep, weight: FontWeight.w800)),
                       ],
                     ),
