@@ -1,0 +1,36 @@
+# Flutter
+*.class
+*.log
+*.pyc
+*.swp
+.DS_Store
+.dart_tool/
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+/build/
+/coverage/
+app.*.symbols
+app.*.map.json
+/android/app/debug
+/android/app/profile
+/android/app/release
+.idea/
+.ref/
+
+# Laravel
+laravel/vendor/
+laravel/node_modules/
+laravel/.env
+laravel/.env.backup
+laravel/.env.production
+laravel/storage/*.key
+laravel/storage/pail
+laravel/storage/logs/*
+laravel/storage/framework/cache/data/*
+laravel/storage/framework/sessions/*
+laravel/storage/framework/views/*
+laravel/bootstrap/cache/*.php
+laravel/public/hot
+laravel/public/storage
+laravel/public/build
