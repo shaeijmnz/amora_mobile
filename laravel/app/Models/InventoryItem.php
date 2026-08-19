@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 
 #[Fillable([
+    'product_id',
     'name',
     'category_id',
     'image_url',
@@ -29,5 +30,21 @@ class InventoryItem extends Model
     public function category()
     {
         return $this->belongsTo(Category::class);
+    }
+
+    public function product()
+    {
+        return $this->belongsTo(Product::class);
+    }
+
+    public function syncStockStatus(): void
+    {
+        if ($this->quantity_on_hand <= 0) {
+            $this->status = 'out_of_stock';
+        } elseif ($this->quantity_on_hand < $this->min_stock_level) {
+            $this->status = 'low_stock';
+        } else {
+            $this->status = 'in_stock';
+        }
     }
 }

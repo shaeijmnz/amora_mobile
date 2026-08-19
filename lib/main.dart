@@ -4,7 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import 'package:amora_florals_mobile/auth.dart';
+import 'package:amora_florals_mobile/services/api_config.dart';
 import 'package:amora_florals_mobile/services/auth_api.dart';
+import 'package:amora_florals_mobile/services/order_api.dart';
+import 'package:amora_florals_mobile/services/product_api.dart';
 
 void main() => runApp(const AmoraFloralsApp());
 
@@ -135,7 +138,8 @@ class F {
 // Catalog + chat data
 // ═══════════════════════════════════════════
 class SizePrice {
-  const SizePrice({required this.label, required this.priceFrom});
+  const SizePrice({this.id, required this.label, required this.priceFrom});
+  final int? id;
   final String label;
   final int priceFrom;
 
@@ -150,6 +154,8 @@ class SizePrice {
 
 class FlowerProduct {
   const FlowerProduct({
+    this.id,
+    this.sizeId,
     required this.name,
     required this.price,
     required this.rating,
@@ -164,6 +170,8 @@ class FlowerProduct {
     this.isStem = false,
   });
 
+  final int? id;
+  final int? sizeId;
   final String name;
   final String price;
   final String rating;
@@ -253,7 +261,7 @@ List<FlowerProduct> catalogProducts({
   return list;
 }
 
-const products = <FlowerProduct>[
+const _localCatalog = <FlowerProduct>[
   FlowerProduct(
     name: 'China Roses Bouquet',
     price: '₱300+',
@@ -348,6 +356,9 @@ const products = <FlowerProduct>[
     note: 'Price per stem, unarranged. Additional charges may apply if arranged as a bouquet.',
   ),
 ];
+
+/// Live catalog from Laravel `/api/products`. Falls back to [_localCatalog] if offline.
+List<FlowerProduct> products = List<FlowerProduct>.from(_localCatalog);
 
 class ChatThread {
   const ChatThread({
@@ -963,9 +974,10 @@ class NetImage extends StatelessWidget {
       decoration: const BoxDecoration(gradient: LinearGradient(colors: [Dream.peach, Dream.blush])),
       child: const Icon(Icons.local_florist_rounded, color: Dream.roseDeep),
     );
-    if (url.startsWith('assets/')) {
+    final resolved = ApiConfig.resolveImageUrl(url);
+    if (resolved.startsWith('assets/')) {
       return Image.asset(
-        url,
+        resolved,
         width: width,
         height: height,
         fit: fit,
@@ -973,7 +985,7 @@ class NetImage extends StatelessWidget {
       );
     }
     return Image.network(
-      url,
+      resolved,
       width: width,
       height: height,
       fit: fit,
@@ -1186,6 +1198,40 @@ class _MainShellState extends State<MainShell> {
     threads = seedThreads();
     wishlist = WishlistController();
     cart = CartController();
+    _loadCatalog();
+  }
+
+  Future<void> _loadCatalog() async {
+    try {
+      final apiItems = await ProductApi().fetchProducts();
+      if (!mounted || apiItems.isEmpty) return;
+      setState(() {
+        products = apiItems
+            .map(
+              (p) => FlowerProduct(
+                id: p.id,
+                sizeId: p.sizeId,
+                name: p.name,
+                price: p.priceLabel,
+                rating: p.rating,
+                reviews: p.reviews,
+                imageUrl: p.imageUrl,
+                category: p.category,
+                gallery: p.gallery,
+                sizes: p.sizes
+                    .map((s) => SizePrice(id: s.id, label: s.label, priceFrom: s.price.round()))
+                    .toList(),
+                description: p.description ??
+                    'Pre-order bloom from Amora Florals. Prices may change without prior notice due to supply and seasonal fluctuations. Free greeting card included.',
+                note: p.note,
+                isStem: p.isStem,
+              ),
+            )
+            .toList();
+      });
+    } catch (_) {
+      // Keep [_localCatalog] when Laravel is offline.
+    }
   }
 
   @override
@@ -3375,7 +3421,7 @@ class _VariantSheetState extends State<VariantSheet> {
   }
 }
 
-class CartScreen extends StatelessWidget {
+class CartScreen extends StatefulWidget {
   const CartScreen({
     super.key,
     required this.product,
@@ -3386,6 +3432,104 @@ class CartScreen extends StatelessWidget {
   final FlowerProduct product;
   final int quantity;
   final String color;
+
+  @override
+  State<CartScreen> createState() => _CartScreenState();
+}
+
+class _CartScreenState extends State<CartScreen> {
+  bool placing = false;
+
+  int? get sizeId {
+    final match = widget.product.sizes.where((s) => s.label == widget.color);
+    if (match.isNotEmpty) return match.first.id;
+    if (widget.product.sizes.isNotEmpty) return widget.product.sizes.first.id;
+    return widget.product.sizeId;
+  }
+
+  Future<void> _placeOrder() async {
+    final id = sizeId;
+    if (id == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('This product has no size to checkout. Refresh the shop.', style: F.ui(13, color: Colors.white))),
+      );
+      return;
+    }
+    setState(() => placing = true);
+    try {
+      final result = await OrderApi().placeOrder(sizeId: id, quantity: widget.quantity);
+      if (!mounted) return;
+      final number = (result['data'] as Map?)?['order_number']?.toString() ?? '';
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: const EdgeInsets.symmetric(horizontal: 28),
+          child: SoftGlass(
+            radius: 28,
+            padding: const EdgeInsets.fromLTRB(22, 28, 22, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 72,
+                  height: 72,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: Dream.petal,
+                    boxShadow: [
+                      BoxShadow(color: Dream.rose.withValues(alpha: 0.35), blurRadius: 16, offset: const Offset(0, 8)),
+                    ],
+                  ),
+                  child: const Icon(Icons.check_rounded, color: Colors.white, size: 38),
+                ),
+                const SizedBox(height: 16),
+                Text('Order confirmed', style: F.display(28, weight: FontWeight.w700)),
+                const SizedBox(height: 8),
+                Text(
+                  number.isEmpty
+                      ? 'Thank you! Your bloom is being prepared.'
+                      : 'Thank you! Your bloom is being prepared.\n$number',
+                  textAlign: TextAlign.center,
+                  style: F.ui(13, color: Dream.mist, height: 1.4),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  '${widget.quantity} × ${widget.product.name}',
+                  textAlign: TextAlign.center,
+                  style: F.ui(13, color: Dream.roseDeep, weight: FontWeight.w800),
+                ),
+                const SizedBox(height: 22),
+                BloomTap(
+                  onTap: () => Navigator.of(ctx).pop(),
+                  child: Container(
+                    height: 48,
+                    width: double.infinity,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      gradient: Dream.petal,
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Text('Done', style: F.ui(14, color: Colors.white, weight: FontWeight.w800)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      if (!mounted) return;
+      Navigator.of(context).pop();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString(), style: F.ui(13, color: Colors.white))),
+      );
+    } finally {
+      if (mounted) setState(() => placing = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -3400,30 +3544,57 @@ class CartScreen extends StatelessWidget {
         ),
         body: Padding(
           padding: const EdgeInsets.all(20),
-          child: FloatIn(
-            child: SoftGlass(
-              radius: 24,
-              padding: const EdgeInsets.all(14),
-              child: Row(
-                children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(16),
-                    child: NetImage(url: product.imageUrl, width: 84, height: 84),
+          child: Column(
+            children: [
+              FloatIn(
+                child: SoftGlass(
+                  radius: 24,
+                  padding: const EdgeInsets.all(14),
+                  child: Row(
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(16),
+                        child: NetImage(url: widget.product.imageUrl, width: 84, height: 84),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(widget.product.name, style: F.display(20)),
+                            Text('Size: ${widget.color} · Qty: ${widget.quantity}', style: F.ui(12, color: Dream.mist)),
+                            Text(widget.product.price, style: F.ui(15, color: Dream.roseDeep, weight: FontWeight.w800)),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(product.name, style: F.display(20)),
-                        Text('Size: $color · Qty: $quantity', style: F.ui(12, color: Dream.mist)),
-                        Text(product.price, style: F.ui(15, color: Dream.roseDeep, weight: FontWeight.w800)),
-                      ],
-                    ),
-                  ),
-                ],
+                ),
               ),
-            ),
+              const Spacer(),
+              BloomTap(
+                onTap: placing ? null : () { _placeOrder(); },
+                child: Container(
+                  height: 52,
+                  width: double.infinity,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    gradient: Dream.petal,
+                    borderRadius: BorderRadius.circular(18),
+                    boxShadow: [
+                      BoxShadow(color: Dream.rose.withValues(alpha: 0.35), blurRadius: 14, offset: const Offset(0, 6)),
+                    ],
+                  ),
+                  child: placing
+                      ? const SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(strokeWidth: 2.4, color: Colors.white),
+                        )
+                      : Text('Place Order', style: F.ui(15, color: Colors.white, weight: FontWeight.w800)),
+                ),
+              ),
+            ],
           ),
         ),
       ),

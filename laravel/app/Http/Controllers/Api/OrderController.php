@@ -3,11 +3,13 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\InventoryItem;
 use App\Models\Order;
 use App\Models\ProductSize;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 
 class OrderController extends Controller
 {
@@ -45,6 +47,29 @@ class OrderController extends Controller
             foreach ($data['items'] as $item) {
                 $size = ProductSize::with('product')->findOrFail($item['size_id']);
                 $qty = (int) $item['quantity'];
+                $productName = $size->product?->name ?? 'this product';
+
+                $inventory = InventoryItem::query()
+                    ->where(function ($q) use ($size) {
+                        $q->where('product_id', $size->product_id);
+                        if ($size->product?->name) {
+                            $q->orWhere('name', $size->product->name);
+                        }
+                    })
+                    ->lockForUpdate()
+                    ->first();
+
+                if ($inventory) {
+                    if ($inventory->quantity_on_hand < $qty) {
+                        throw ValidationException::withMessages([
+                            'items' => "Not enough stock for {$productName}. Only {$inventory->quantity_on_hand} left.",
+                        ]);
+                    }
+                    $inventory->quantity_on_hand -= $qty;
+                    $inventory->syncStockStatus();
+                    $inventory->save();
+                }
+
                 $lineTotal = (float) $size->price * $qty;
                 $subtotal += $lineTotal;
 

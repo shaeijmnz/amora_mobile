@@ -10,6 +10,9 @@ use Illuminate\Database\Eloquent\Model;
     'category',
     'description',
     'primary_image_url',
+    'images',
+    'is_customisable',
+    'customisation_items',
     'preparation_time_minutes',
     'is_available',
     'is_featured',
@@ -24,7 +27,10 @@ class Product extends Model
         return [
             'is_available' => 'boolean',
             'is_featured' => 'boolean',
+            'is_customisable' => 'boolean',
             'rating' => 'float',
+            'images' => 'array',
+            'customisation_items' => 'array',
             'archived_at' => 'datetime',
         ];
     }

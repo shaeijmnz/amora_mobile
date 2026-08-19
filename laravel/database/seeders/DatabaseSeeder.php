@@ -10,8 +10,8 @@ class DatabaseSeeder extends Seeder
     {
         $this->call([
             AmoraSeeder::class,
-            InventorySeeder::class,
             ProductSeeder::class,
+            InventorySeeder::class,
         ]);
     }
 }
