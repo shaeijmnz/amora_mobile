@@ -22,13 +22,18 @@ class DashboardController extends Controller
                 'low_stock' => InventoryItem::whereNull('archived_at')->where('status', 'low_stock')->count(),
                 'out_of_stock' => InventoryItem::whereNull('archived_at')->where('status', 'out_of_stock')->count(),
                 'damaged_spoiled' => InventoryItem::whereNull('archived_at')->whereIn('status', ['damaged', 'spoiled'])->count(),
-                'new_orders' => Order::where('status', 'pending')->count(),
-                'being_prepared' => Order::where('status', 'being_prepared')->count(),
-                'for_delivery' => Order::whereIn('status', ['ready_for_delivery', 'dispatched'])->count(),
-                'completed_today' => Order::whereDate('updated_at', $today)->whereIn('status', ['completed', 'delivered'])->count(),
-                'todays_sales' => (float) Order::whereDate('created_at', $today)->whereNotIn('status', ['cancelled', 'refunded'])->sum('total'),
+                'new_orders' => Order::where('payment_status', 'paid')->where('status', 'confirmed')->count(),
+                'being_prepared' => Order::where('payment_status', 'paid')->where('status', 'being_prepared')->count(),
+                'for_delivery' => Order::where('payment_status', 'paid')->whereIn('status', ['ready_for_delivery', 'dispatched'])->count(),
+                'completed_today' => Order::where('payment_status', 'paid')->whereDate('updated_at', $today)->whereIn('status', ['completed', 'delivered'])->count(),
+                'todays_sales' => (float) Order::where('payment_status', 'paid')->whereDate('paid_at', $today)->sum('total'),
             ],
-            'recent_orders' => Order::with('customer')->latest()->limit(8)->get()->map(fn (Order $o) => [
+            'recent_orders' => Order::with('customer')
+                ->where('payment_status', 'paid')
+                ->latest()
+                ->limit(8)
+                ->get()
+                ->map(fn (Order $o) => [
                 'id' => $o->id,
                 'order_number' => $o->order_number,
                 'customer_name' => $o->customer?->name,

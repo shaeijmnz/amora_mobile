@@ -1,15 +1,24 @@
+import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:amora_florals_mobile/auth.dart';
 import 'package:amora_florals_mobile/services/api_config.dart';
 import 'package:amora_florals_mobile/services/auth_api.dart';
 import 'package:amora_florals_mobile/services/order_api.dart';
 import 'package:amora_florals_mobile/services/product_api.dart';
+import 'package:amora_florals_mobile/web_url_clean.dart';
+import 'package:url_launcher/url_launcher.dart';
 
-void main() => runApp(const AmoraFloralsApp());
+void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  // Avoid blank first paint on Safari when font CDN is slow/blocked.
+  GoogleFonts.config.allowRuntimeFetching = false;
+  runApp(const AmoraFloralsApp());
+}
 
 class AmoraFloralsApp extends StatelessWidget {
   const AmoraFloralsApp({super.key});
@@ -21,19 +30,112 @@ class AmoraFloralsApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         useMaterial3: true,
-        scaffoldBackgroundColor: Colors.transparent,
+        // Opaque cream — transparent + failed first paint looks like a blank Safari page.
+        scaffoldBackgroundColor: Dream.cream,
         colorScheme: ColorScheme.fromSeed(
           seedColor: Dream.rose,
           primary: Dream.rose,
           surface: Dream.cream,
         ),
-        textTheme: GoogleFonts.quicksandTextTheme().apply(
+        // Don't block first frame on Google Fonts network fetch (common Safari white screen).
+        textTheme: ThemeData.light().textTheme.apply(
           bodyColor: Dream.ink,
           displayColor: Dream.ink,
         ),
       ),
-      home: const DreamWorld(child: AuthScreen()),
+      builder: (context, child) {
+        ErrorWidget.builder = (details) {
+          return Material(
+            color: Dream.cream,
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text(
+                  'Something went wrong.\n${details.exceptionAsString()}',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: Dream.ink, fontSize: 14),
+                ),
+              ),
+            ),
+          );
+        };
+        return child ?? const SizedBox.shrink();
+      },
+      home: const DreamWorld(child: SessionGate()),
     );
+  }
+}
+
+/// Restores saved login so Safari refresh stays signed in.
+class SessionGate extends StatefulWidget {
+  const SessionGate({super.key});
+
+  @override
+  State<SessionGate> createState() => _SessionGateState();
+}
+
+class _SessionGateState extends State<SessionGate> {
+  bool checking = true;
+  bool signedIn = false;
+  String? paymentReturn; // success | cancel
+  int? paymentOrderId;
+
+  @override
+  void initState() {
+    super.initState();
+    final uri = Uri.base;
+    paymentReturn = uri.queryParameters['payment'];
+    paymentOrderId = int.tryParse(uri.queryParameters['order_id'] ?? '');
+    _restore();
+  }
+
+  Future<void> _restore() async {
+    try {
+      final token = await AuthApi().getToken().timeout(const Duration(seconds: 4));
+      if (!mounted) return;
+      setState(() {
+        signedIn = token != null && token.isNotEmpty;
+        checking = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        signedIn = false;
+        checking = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (checking) {
+      return const Scaffold(
+        backgroundColor: Dream.cream,
+        body: Center(
+          child: SizedBox(
+            width: 28,
+            height: 28,
+            child: CircularProgressIndicator(strokeWidth: 2.6, color: Dream.roseDeep),
+          ),
+        ),
+      );
+    }
+    if (!signedIn) return const AuthScreen();
+
+    if (paymentReturn == 'success' || paymentReturn == 'cancel') {
+      return PaymentReturnScreen(
+        success: paymentReturn == 'success',
+        orderId: paymentOrderId,
+        onDone: () {
+          setState(() {
+            paymentReturn = null;
+            paymentOrderId = null;
+          });
+        },
+      );
+    }
+
+    return const MainShell();
   }
 }
 
@@ -263,96 +365,109 @@ List<FlowerProduct> catalogProducts({
 
 const _localCatalog = <FlowerProduct>[
   FlowerProduct(
+    id: 1,
+    sizeId: 1,
     name: 'China Roses Bouquet',
-    price: '₱300+',
+    price: '₱1+',
     rating: '4.9',
     reviews: '86',
     imageUrl: 'assets/images/products/china_roses.jpg',
     gallery: ['assets/images/products/china_roses_1.jpg'],
     category: 'bouquet rose',
     sizes: [
-      SizePrice(label: '1pc', priceFrom: 300),
-      SizePrice(label: '3pcs', priceFrom: 800),
-      SizePrice(label: '5pcs', priceFrom: 1200),
-      SizePrice(label: '10pcs', priceFrom: 1800),
+      SizePrice(id: 1, label: '1pc', priceFrom: 1),
+      SizePrice(id: 2, label: '3pcs', priceFrom: 1),
+      SizePrice(id: 3, label: '5pcs', priceFrom: 1),
+      SizePrice(id: 4, label: '10pcs', priceFrom: 1),
     ],
   ),
   FlowerProduct(
+    id: 2,
+    sizeId: 5,
     name: 'Sunflower Bouquet',
-    price: '₱250+',
+    price: '₱1+',
     rating: '4.8',
     reviews: '74',
     imageUrl: 'assets/images/products/sunflower.jpg',
     gallery: ['assets/images/products/sunflower_1.jpg'],
     category: 'bouquet sunflower',
     sizes: [
-      SizePrice(label: '1pc', priceFrom: 250),
-      SizePrice(label: '3pcs', priceFrom: 800),
-      SizePrice(label: '5pcs', priceFrom: 1300),
-      SizePrice(label: '10pcs', priceFrom: 1800),
+      SizePrice(id: 5, label: '1pc', priceFrom: 1),
+      SizePrice(id: 6, label: '3pcs', priceFrom: 1),
+      SizePrice(id: 7, label: '5pcs', priceFrom: 1),
+      SizePrice(id: 8, label: '10pcs', priceFrom: 1),
     ],
   ),
   FlowerProduct(
     name: 'Gerbera / Daisy Bouquet',
-    price: '₱250+',
+    price: '₱1+',
     rating: '4.8',
     reviews: '91',
     imageUrl: 'assets/images/products/gerbera_daisy.jpg',
     gallery: ['assets/images/products/gerbera_daisy_1.jpg'],
     category: 'bouquet daisy gerbera',
     sizes: [
-      SizePrice(label: '1pc', priceFrom: 250),
-      SizePrice(label: '3pcs', priceFrom: 800),
-      SizePrice(label: '5pcs', priceFrom: 1300),
-      SizePrice(label: '10pcs', priceFrom: 2000),
+      SizePrice(id: 9, label: '1pc', priceFrom: 1),
+      SizePrice(id: 10, label: '3pcs', priceFrom: 1),
+      SizePrice(id: 11, label: '5pcs', priceFrom: 1),
+      SizePrice(id: 12, label: '10pcs', priceFrom: 1),
     ],
   ),
   FlowerProduct(
     name: 'Carnation Bouquet',
-    price: '₱250+',
+    price: '₱1+',
     rating: '4.7',
     reviews: '68',
     imageUrl: 'assets/images/products/carnation.jpg',
     gallery: ['assets/images/products/carnation_1.jpg'],
     category: 'bouquet carnation',
     sizes: [
-      SizePrice(label: '1pc', priceFrom: 250),
-      SizePrice(label: '3pcs', priceFrom: 800),
-      SizePrice(label: '5pcs', priceFrom: 1300),
-      SizePrice(label: '10pcs', priceFrom: 1800),
+      SizePrice(id: 13, label: '1pc', priceFrom: 1),
+      SizePrice(id: 14, label: '3pcs', priceFrom: 1),
+      SizePrice(id: 15, label: '5pcs', priceFrom: 1),
+      SizePrice(id: 16, label: '10pcs', priceFrom: 1),
     ],
   ),
   FlowerProduct(
+    id: 5,
+    sizeId: 17,
     name: 'Stargazer Lilies',
-    price: '₱400',
+    price: '₱1',
     rating: '4.9',
     reviews: '52',
     imageUrl: 'assets/images/products/stargazer_lilies.jpg',
     gallery: ['assets/images/products/stargazer_lilies_1.jpg'],
     category: 'stem lily',
     isStem: true,
+    sizes: [SizePrice(id: 17, label: '1 stem', priceFrom: 1)],
     note: 'Price per stem, unarranged. Additional charges may apply if arranged as a bouquet.',
   ),
   FlowerProduct(
+    id: 6,
+    sizeId: 18,
     name: 'Sunlight Chrysanthemum',
-    price: '₱400',
+    price: '₱1',
     rating: '4.7',
     reviews: '41',
     imageUrl: 'assets/images/products/sunlight_chrysanthemum.jpg',
     gallery: ['assets/images/products/sunlight_chrysanthemum_1.jpg'],
     category: 'stem chrysanthemum',
     isStem: true,
+    sizes: [SizePrice(id: 18, label: '1 stem', priceFrom: 1)],
     note: 'Price per stem, unarranged. Additional charges may apply if arranged as a bouquet.',
   ),
   FlowerProduct(
+    id: 7,
+    sizeId: 19,
     name: 'Hydrangea',
-    price: '₱300',
+    price: '₱1',
     rating: '4.8',
     reviews: '57',
     imageUrl: 'assets/images/products/hydrangea.jpg',
     gallery: ['assets/images/products/hydrangea_1.jpg'],
     category: 'stem hydrangea',
     isStem: true,
+    sizes: [SizePrice(id: 19, label: '1 stem', priceFrom: 1)],
     note: 'Price per stem, unarranged. Additional charges may apply if arranged as a bouquet.',
   ),
 ];
@@ -902,6 +1017,7 @@ class _BloomTapState extends State<BloomTap> {
       onEnter: (_) => setState(() => hover = true),
       onExit: (_) => setState(() => hover = false),
       child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
         onTapDown: widget.onTap == null ? null : (_) => setState(() => down = true),
         onTapUp: widget.onTap == null ? null : (_) => setState(() => down = false),
         onTapCancel: widget.onTap == null ? null : () => setState(() => down = false),
@@ -1074,14 +1190,182 @@ class WishlistController extends ChangeNotifier {
   }
 }
 
+class CartItem {
+  CartItem({
+    this.productId,
+    required this.sizeId,
+    required this.name,
+    required this.imageUrl,
+    required this.sizeLabel,
+    required this.priceFrom,
+    this.quantity = 1,
+  });
+
+  final int? productId;
+  final int sizeId;
+  final String name;
+  final String imageUrl;
+  final String sizeLabel;
+  final int priceFrom;
+  int quantity;
+
+  String get priceDisplay {
+    final raw = priceFrom.toString();
+    final withComma = raw.length > 3
+        ? '${raw.substring(0, raw.length - 3)},${raw.substring(raw.length - 3)}'
+        : raw;
+    return '₱$withComma+';
+  }
+
+  int get lineTotal => priceFrom * quantity;
+}
+
 class CartController extends ChangeNotifier {
-  final Map<String, int> _qty = {};
+  CartController() {
+    load();
+  }
 
-  int get count => _qty.values.fold(0, (a, b) => a + b);
+  static const _storageKey = 'amora_cart_v1';
 
-  void add(String name, [int quantity = 1]) {
-    _qty[name] = (_qty[name] ?? 0) + quantity;
+  final List<CartItem> _items = [];
+  int _pulse = 0;
+
+  int get count => _items.fold(0, (sum, item) => sum + item.quantity);
+  int get pulse => _pulse;
+  bool get isEmpty => _items.isEmpty;
+  List<CartItem> get items => List.unmodifiable(_items);
+
+  int get subtotal => _items.fold(0, (sum, item) => sum + item.lineTotal);
+
+  String get subtotalDisplay {
+    final raw = subtotal.toString();
+    final withComma = raw.length > 3
+        ? '${raw.substring(0, raw.length - 3)},${raw.substring(raw.length - 3)}'
+        : raw;
+    return '₱$withComma+';
+  }
+
+  /// Stable local key when API size ids are missing (offline catalog).
+  static int localSizeKey(String name, String sizeLabel) {
+    return Object.hash(name, sizeLabel).abs() % 900000 + 100000;
+  }
+
+  Future<void> load() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_storageKey);
+      if (raw == null || raw.isEmpty) return;
+      final decoded = jsonDecode(raw);
+      if (decoded is! List) return;
+      _items
+        ..clear()
+        ..addAll(
+          decoded.whereType<Map>().map((e) {
+            final m = Map<String, dynamic>.from(e);
+            return CartItem(
+              productId: m['productId'] as int?,
+              sizeId: (m['sizeId'] as num).toInt(),
+              name: m['name']?.toString() ?? '',
+              imageUrl: m['imageUrl']?.toString() ?? '',
+              sizeLabel: m['sizeLabel']?.toString() ?? '',
+              priceFrom: (m['priceFrom'] as num?)?.toInt() ?? 0,
+              quantity: (m['quantity'] as num?)?.toInt() ?? 1,
+            );
+          }),
+        );
+      notifyListeners();
+    } catch (_) {
+      // Ignore corrupt local cart.
+    }
+  }
+
+  Future<void> _persist() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final payload = [
+        for (final item in _items)
+          {
+            'productId': item.productId,
+            'sizeId': item.sizeId,
+            'name': item.name,
+            'imageUrl': item.imageUrl,
+            'sizeLabel': item.sizeLabel,
+            'priceFrom': item.priceFrom,
+            'quantity': item.quantity,
+          },
+      ];
+      await prefs.setString(_storageKey, jsonEncode(payload));
+    } catch (_) {}
+  }
+
+  void _changed({bool pulse = false}) {
+    if (pulse) _pulse++;
     notifyListeners();
+    _persist();
+  }
+
+  void addFromProduct(
+    FlowerProduct product, {
+    required String sizeLabel,
+    required int quantity,
+    int? sizeId,
+    int? priceFrom,
+  }) {
+    final sid = sizeId ?? product.sizeId ?? localSizeKey(product.name, sizeLabel);
+    final price = priceFrom ?? product.sortPrice;
+    CartItem? existing;
+    for (final item in _items) {
+      if (item.sizeId == sid) {
+        existing = item;
+        break;
+      }
+    }
+    if (existing != null) {
+      existing.quantity += quantity;
+    } else {
+      _items.add(
+        CartItem(
+          productId: product.id,
+          sizeId: sid,
+          name: product.name,
+          imageUrl: product.imageUrl,
+          sizeLabel: sizeLabel,
+          priceFrom: price,
+          quantity: quantity,
+        ),
+      );
+    }
+    _changed(pulse: true);
+  }
+
+  void setQuantity(int sizeId, int qty) {
+    if (qty <= 0) {
+      remove(sizeId);
+      return;
+    }
+    for (final item in _items) {
+      if (item.sizeId == sizeId) {
+        item.quantity = qty;
+        _changed();
+        return;
+      }
+    }
+  }
+
+  void remove(int sizeId) {
+    _items.removeWhere((item) => item.sizeId == sizeId);
+    _changed();
+  }
+
+  void clear() {
+    _items.clear();
+    _changed();
+  }
+
+  void removeMany(Iterable<int> sizeIds) {
+    final ids = sizeIds.toSet();
+    _items.removeWhere((item) => ids.contains(item.sizeId));
+    _changed();
   }
 }
 
@@ -1295,34 +1579,20 @@ class _MainShellState extends State<MainShell> {
         onProductChat: (p) => _openInbox(productHint: p),
         onOpenWishlist: () => setState(() => index = 3),
         onOpenCart: () {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                cart.count == 0 ? 'Your cart is empty' : '${cart.count} items in cart',
-                style: F.ui(13, color: Colors.white),
+          Navigator.of(context).push(
+            _dreamRoute(
+              WishlistScope(
+                controller: wishlist,
+                child: CartScope(
+                  controller: cart,
+                  child: const CartScreen(),
+                ),
               ),
             ),
           );
         },
       ),
-      CategoriesScreen(
-        onPick: (label) {
-          setState(() => index = 0);
-          // Home will handle via callback if needed — open search from here:
-        },
-        onSearchCategory: (label) {
-          Navigator.push(
-            context,
-            _dreamRoute(keepWishlist(
-              context,
-              SearchScreen(
-                initialCategory: label,
-                onProductChat: (p) => _openInbox(productHint: p),
-              ),
-            )),
-          );
-        },
-      ),
+      const MyOrdersScreen(),
       InboxScreen(
         threads: threads,
         onOpen: (t) => Navigator.push(
@@ -1358,7 +1628,7 @@ class _MainShellState extends State<MainShell> {
         onProductChat: (p) => _openInbox(productHint: p),
       ),
       ProfileScreen(
-        onOpenWishlist: () => setState(() => index = 3),
+        onOpenOrders: () => setState(() => index = 1),
         onOpenMessages: () => setState(() => index = 2),
       ),
     ];
@@ -1407,8 +1677,8 @@ class _MainShellState extends State<MainShell> {
                           ),
                           _NavItem(
                             selected: index == 1,
-                            icon: Icons.grid_view_rounded,
-                            label: 'Categories',
+                            icon: Icons.receipt_long_rounded,
+                            label: 'Orders',
                             onTap: () => setState(() => index = 1),
                           ),
                           const SizedBox(width: 56),
@@ -1488,6 +1758,73 @@ Widget keepWishlist(BuildContext context, Widget child) {
     child: CartScope(
       controller: CartScope.of(context),
       child: child,
+    ),
+  );
+}
+
+void openCartScreen(BuildContext context) {
+  final cart = CartScope.maybeOf(context);
+  final wish = context.dependOnInheritedWidgetOfExactType<WishlistScope>()?.controller;
+
+  if (cart == null || wish == null) {
+    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+      SnackBar(
+        content: Text('Could not open cart. Please try again.', style: F.ui(13, color: Colors.white)),
+      ),
+    );
+    return;
+  }
+
+  Navigator.of(context).push(
+    _dreamRoute(
+      WishlistScope(
+        controller: wish,
+        child: CartScope(
+          controller: cart,
+          child: const CartScreen(),
+        ),
+      ),
+    ),
+  );
+}
+
+void showAddedToCartFeedback(
+  BuildContext context, {
+  required String label,
+  VoidCallback? onViewCart,
+}) {
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(
+      behavior: SnackBarBehavior.floating,
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 88),
+      backgroundColor: Dream.roseDeep,
+      duration: const Duration(seconds: 2),
+      content: Row(
+        children: [
+          TweenAnimationBuilder<double>(
+            tween: Tween(begin: 0, end: 1),
+            duration: const Duration(milliseconds: 420),
+            builder: (context, value, child) {
+              return Transform.scale(
+                scale: 0.85 + (value * 0.15),
+                child: Opacity(opacity: value, child: child),
+              );
+            },
+            child: const Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text('Added $label to cart', style: F.ui(13, color: Colors.white)),
+          ),
+        ],
+      ),
+      action: onViewCart == null
+          ? null
+          : SnackBarAction(
+              label: 'View',
+              textColor: Colors.white,
+              onPressed: onViewCart,
+            ),
     ),
   );
 }
@@ -1693,15 +2030,57 @@ class WishlistScreen extends StatelessWidget {
 // ═══════════════════════════════════════════
 // PROFILE
 // ═══════════════════════════════════════════
-class ProfileScreen extends StatelessWidget {
+class ProfileScreen extends StatefulWidget {
   const ProfileScreen({
     super.key,
-    required this.onOpenWishlist,
+    required this.onOpenOrders,
     required this.onOpenMessages,
   });
 
-  final VoidCallback onOpenWishlist;
+  final VoidCallback onOpenOrders;
   final VoidCallback onOpenMessages;
+
+  @override
+  State<ProfileScreen> createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends State<ProfileScreen> {
+  String name = '…';
+  String email = '';
+  int orderCount = 0;
+  bool loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final api = AuthApi();
+    final saved = await api.getSavedUser();
+    if (mounted && saved != null) {
+      setState(() {
+        name = saved['name']?.toString() ?? 'Customer';
+        email = saved['email']?.toString() ?? '';
+      });
+    }
+    try {
+      final user = await api.fetchMe() ?? saved;
+      final orders = await OrderApi().listOrders();
+      final paid = orders.where((o) => o['payment_status'] == 'paid').length;
+      if (!mounted) return;
+      setState(() {
+        name = user?['name']?.toString() ?? name;
+        email = user?['email']?.toString() ?? email;
+        orderCount = paid;
+        loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => loading = false);
+    }
+  }
 
   Future<void> _logout(BuildContext context) async {
     await AuthApi().clearSession();
@@ -1711,17 +2090,22 @@ class ProfileScreen extends StatelessWidget {
         transitionDuration: const Duration(milliseconds: 420),
         pageBuilder: (context, animation, secondary) => FadeTransition(
           opacity: animation,
-          child: const DreamWorld(child: AuthScreen()),
+          child: const DreamWorld(child: SessionGate()),
         ),
       ),
       (_) => false,
     );
   }
 
+  String get _initials {
+    final parts = name.trim().split(RegExp(r'\s+'));
+    if (parts.isEmpty || parts.first.isEmpty) return 'A';
+    if (parts.length == 1) return parts.first.substring(0, 1).toUpperCase();
+    return (parts.first.substring(0, 1) + parts.last.substring(0, 1)).toUpperCase();
+  }
+
   @override
   Widget build(BuildContext context) {
-    final wish = WishlistScope.of(context);
-
     return SafeArea(
       bottom: false,
       child: ListView(
@@ -1740,10 +2124,12 @@ class ProfileScreen extends StatelessWidget {
                       shape: BoxShape.circle,
                       gradient: Dream.petal,
                     ),
-                    child: const CircleAvatar(
+                    child: CircleAvatar(
                       radius: 34,
-                      backgroundImage: NetworkImage(
-                        'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=200',
+                      backgroundColor: Dream.rose.withValues(alpha: 0.25),
+                      child: Text(
+                        _initials,
+                        style: F.ui(22, color: Dream.roseDeep, weight: FontWeight.w800),
                       ),
                     ),
                   ),
@@ -1752,8 +2138,18 @@ class ProfileScreen extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Amora Member', style: F.script(34, color: Dream.roseDeep)),
-                        Text('bloom.lover@amora.app', style: F.ui(12, color: Dream.mist)),
+                        Text(
+                          loading && name == '…' ? 'Loading…' : name,
+                          style: F.script(34, color: Dream.roseDeep),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        Text(
+                          email.isEmpty ? '—' : email,
+                          style: F.ui(12, color: Dream.mist),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                         const SizedBox(height: 6),
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
@@ -1777,14 +2173,31 @@ class ProfileScreen extends StatelessWidget {
           const SizedBox(height: 12),
           FloatIn(
             delay: const Duration(milliseconds: 50),
-            child: Row(
-              children: [
-                _ProfileStat(label: 'Wishlist', value: '${wish.count}', onTap: onOpenWishlist),
-                const SizedBox(width: 10),
-                _ProfileStat(label: 'Orders', value: '3', onTap: () {}),
-                const SizedBox(width: 10),
-                _ProfileStat(label: 'Points', value: '240', onTap: () {}),
-              ],
+            child: SoftGlass(
+              radius: 18,
+              padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+              child: BloomTap(
+                onTap: widget.onOpenOrders,
+                child: Row(
+                  children: [
+                    Icon(Icons.receipt_long_rounded, color: Dream.roseDeep, size: 22),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('My Orders', style: F.ui(14, weight: FontWeight.w800)),
+                          Text(
+                            loading ? 'Loading…' : '$orderCount paid order${orderCount == 1 ? '' : 's'}',
+                            style: F.ui(12, color: Dream.mist),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Icon(Icons.chevron_right_rounded, color: Dream.mist),
+                  ],
+                ),
+              ),
             ),
           ),
           const SizedBox(height: 16),
@@ -1796,27 +2209,27 @@ class ProfileScreen extends StatelessWidget {
             child: Column(
               children: [
                 _ProfileTile(
-                  icon: Icons.favorite_rounded,
-                  title: 'My Wishlist',
-                  subtitle: wish.count == 0 ? 'No saved flowers yet' : '${wish.count} saved',
-                  onTap: onOpenWishlist,
+                  icon: Icons.receipt_long_rounded,
+                  title: 'Order tracking',
+                  subtitle: 'See checkout status & delivery',
+                  onTap: widget.onOpenOrders,
                 ),
                 _ProfileTile(
                   icon: Icons.chat_bubble_outline_rounded,
                   title: 'Messages',
                   subtitle: 'Chat with florists',
-                  onTap: onOpenMessages,
+                  onTap: widget.onOpenMessages,
                 ),
                 _ProfileTile(
                   icon: Icons.local_shipping_outlined,
-                  title: 'Delivery address',
+                  title: 'Delivery area',
                   subtitle: 'Quezon City, Metro Manila',
                   onTap: () {},
                 ),
                 _ProfileTile(
                   icon: Icons.payments_outlined,
-                  title: 'Payment methods',
-                  subtitle: 'GCash · Cash on delivery',
+                  title: 'Payment',
+                  subtitle: 'QR Ph via PayMongo',
                   onTap: () {},
                 ),
               ],
@@ -1840,37 +2253,6 @@ class ProfileScreen extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _ProfileStat extends StatelessWidget {
-  const _ProfileStat({
-    required this.label,
-    required this.value,
-    required this.onTap,
-  });
-
-  final String label;
-  final String value;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Expanded(
-      child: BloomTap(
-        onTap: onTap,
-        child: SoftGlass(
-          radius: 18,
-          padding: const EdgeInsets.symmetric(vertical: 14),
-          child: Column(
-            children: [
-              Text(value, style: F.display(22, color: Dream.roseDeep)),
-              Text(label, style: F.ui(11, color: Dream.mist, weight: FontWeight.w600)),
-            ],
-          ),
-        ),
       ),
     );
   }
@@ -1932,7 +2314,6 @@ class _BrandHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cartCount = CartScope.maybeOf(context)?.count ?? 0;
     return SizedBox(
       width: double.infinity,
       height: 72,
@@ -1954,8 +2335,62 @@ class _BrandHeader extends StatelessWidget {
           ),
           Positioned(
             right: 0,
-            child: BloomTap(
-              onTap: onOpenCart,
+            child: _CartBagButton(onOpenCart: onOpenCart),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CartBagButton extends StatefulWidget {
+  const _CartBagButton({required this.onOpenCart});
+  final VoidCallback onOpenCart;
+
+  @override
+  State<_CartBagButton> createState() => _CartBagButtonState();
+}
+
+class _CartBagButtonState extends State<_CartBagButton> with SingleTickerProviderStateMixin {
+  late final AnimationController _bounce = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 420),
+  );
+  late final Animation<double> _scale = TweenSequence<double>([
+    TweenSequenceItem(tween: Tween(begin: 1.0, end: 1.32), weight: 45),
+    TweenSequenceItem(tween: Tween(begin: 1.32, end: 1.0), weight: 55),
+  ]).animate(CurvedAnimation(parent: _bounce, curve: Curves.easeOutBack));
+  int _lastPulse = 0;
+
+  @override
+  void dispose() {
+    _bounce.dispose();
+    super.dispose();
+  }
+
+  void _syncPulse(CartController cart) {
+    if (cart.pulse != _lastPulse) {
+      _lastPulse = cart.pulse;
+      if (_lastPulse > 0) _bounce.forward(from: 0);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cart = CartScope.maybeOf(context);
+    final cartCount = cart?.count ?? 0;
+
+    return ListenableBuilder(
+      listenable: cart ?? Listenable.merge(const []),
+      builder: (context, _) {
+        if (cart != null) _syncPulse(cart);
+        return ScaleTransition(
+          scale: _scale,
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              customBorder: const CircleBorder(),
+              onTap: widget.onOpenCart,
               child: Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
@@ -1976,15 +2411,22 @@ class _BrandHeader extends StatelessWidget {
                       Positioned(
                         right: -6,
                         top: -6,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                          decoration: BoxDecoration(
-                            gradient: Dream.petal,
-                            borderRadius: BorderRadius.circular(99),
-                          ),
-                          child: Text(
-                            '$cartCount',
-                            style: F.ui(9, color: Colors.white, weight: FontWeight.w800),
+                        child: AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 220),
+                          transitionBuilder: (child, animation) {
+                            return ScaleTransition(scale: animation, child: child);
+                          },
+                          child: Container(
+                            key: ValueKey(cartCount),
+                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                            decoration: BoxDecoration(
+                              gradient: Dream.petal,
+                              borderRadius: BorderRadius.circular(99),
+                            ),
+                            child: Text(
+                              '$cartCount',
+                              style: F.ui(9, color: Colors.white, weight: FontWeight.w800),
+                            ),
                           ),
                         ),
                       ),
@@ -1993,8 +2435,8 @@ class _BrandHeader extends StatelessWidget {
               ),
             ),
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 }
@@ -2067,9 +2509,36 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _addToCart(FlowerProduct p) {
-    CartScope.of(context).add(p.name);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Added ${p.name} to cart', style: F.ui(13, color: Colors.white))),
+    if (p.sizes.length > 1) {
+      showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (_) => keepWishlist(
+          context,
+          VariantSheet(product: p, checkoutMode: false),
+        ),
+      );
+      return;
+    }
+
+    final size = p.sizes.isNotEmpty ? p.sizes.first : null;
+    final sizeLabel = size?.label ?? (p.isStem ? '1 stem' : 'Standard');
+    final sizeId = size?.id ??
+        p.sizeId ??
+        CartController.localSizeKey(p.name, sizeLabel);
+
+    CartScope.of(context).addFromProduct(
+      p,
+      sizeLabel: sizeLabel,
+      quantity: 1,
+      sizeId: sizeId,
+      priceFrom: size?.priceFrom ?? p.sortPrice,
+    );
+    showAddedToCartFeedback(
+      context,
+      label: p.name,
+      onViewCart: widget.onOpenCart,
     );
   }
 
@@ -2526,6 +2995,268 @@ class FlowerCard extends StatelessWidget {
   }
 }
 
+// ═══════════════════════════════════════════
+// MY ORDERS (replaces Categories tab)
+// ═══════════════════════════════════════════
+class MyOrdersScreen extends StatefulWidget {
+  const MyOrdersScreen({super.key});
+
+  @override
+  State<MyOrdersScreen> createState() => _MyOrdersScreenState();
+}
+
+class _MyOrdersScreenState extends State<MyOrdersScreen> {
+  bool loading = true;
+  String? error;
+  List<Map<String, dynamic>> orders = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      loading = true;
+      error = null;
+    });
+    try {
+      final list = await OrderApi().listOrders();
+      if (!mounted) return;
+      setState(() {
+        orders = list;
+        loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        error = e.toString();
+        loading = false;
+      });
+    }
+  }
+
+  String _prettyStatus(String? raw) {
+    if (raw == null || raw.isEmpty) return '—';
+    return raw.replaceAll('_', ' ');
+  }
+
+  String _trackingLabel(Map<String, dynamic> o) {
+    final payment = o['payment_status']?.toString() ?? '';
+    if (payment == 'awaiting_payment' || payment == 'unpaid') {
+      return 'Awaiting payment';
+    }
+    if (payment != 'paid') return _prettyStatus(payment);
+
+    final delivery = o['delivery_status']?.toString();
+    if (delivery != null && delivery.isNotEmpty && delivery != 'unscheduled') {
+      return _prettyStatus(delivery);
+    }
+    return _prettyStatus(o['status']?.toString());
+  }
+
+  Color _statusColor(Map<String, dynamic> o) {
+    final label = _trackingLabel(o).toLowerCase();
+    if (label.contains('awaiting') || label.contains('unpaid')) return Dream.mist;
+    if (label.contains('delivered') || label.contains('completed')) return const Color(0xFF5B8C6A);
+    if (label.contains('fail') || label.contains('cancel')) return Dream.rust;
+    return Dream.roseDeep;
+  }
+
+  String _money(dynamic amount) {
+    final n = (amount is num) ? amount.toDouble() : double.tryParse('$amount') ?? 0;
+    final raw = n == n.roundToDouble() ? n.toInt().toString() : n.toStringAsFixed(2);
+    return '₱$raw';
+  }
+
+  String _itemsSummary(Map<String, dynamic> o) {
+    final items = o['items'];
+    if (items is! List || items.isEmpty) return 'No items';
+    final names = items
+        .whereType<Map>()
+        .map((e) {
+          final qty = e['quantity'] ?? 1;
+          final name = e['product_name'] ?? 'Bloom';
+          return '$qty× $name';
+        })
+        .take(2)
+        .join(', ');
+    final extra = items.length > 2 ? ' +${items.length - 2} more' : '';
+    return '$names$extra';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      bottom: false,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(22, 12, 22, 8),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('My Orders', style: F.script(42, color: Dream.roseDeep)),
+                      Text(
+                        'Track checkout & delivery status',
+                        style: F.ui(13, color: Dream.mist),
+                      ),
+                    ],
+                  ),
+                ),
+                BloomTap(
+                  onTap: loading ? null : _load,
+                  child: SoftGlass(
+                    radius: 14,
+                    padding: const EdgeInsets.all(10),
+                    child: Icon(Icons.refresh_rounded, size: 18, color: Dream.roseDeep),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: loading
+                ? const Center(
+                    child: SizedBox(
+                      width: 28,
+                      height: 28,
+                      child: CircularProgressIndicator(strokeWidth: 2.6, color: Dream.roseDeep),
+                    ),
+                  )
+                : error != null
+                    ? Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(24),
+                          child: SoftGlass(
+                            radius: 22,
+                            padding: const EdgeInsets.all(20),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(error!, style: F.ui(13, color: Dream.mist), textAlign: TextAlign.center),
+                                const SizedBox(height: 12),
+                                BloomTap(
+                                  onTap: _load,
+                                  child: Text('Retry', style: F.ui(13, color: Dream.roseDeep, weight: FontWeight.w800)),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      )
+                    : orders.isEmpty
+                        ? Center(
+                            child: SoftGlass(
+                              radius: 28,
+                              padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.receipt_long_outlined, size: 40, color: Dream.rose.withValues(alpha: 0.7)),
+                                  const SizedBox(height: 10),
+                                  Text('No orders yet', style: F.display(22)),
+                                  Text('Checkout blooms to track them here.', style: F.ui(13, color: Dream.mist)),
+                                ],
+                              ),
+                            ),
+                          )
+                        : RefreshIndicator(
+                            color: Dream.roseDeep,
+                            onRefresh: _load,
+                            child: ListView.separated(
+                              padding: const EdgeInsets.fromLTRB(18, 4, 18, 120),
+                              itemCount: orders.length,
+                              separatorBuilder: (_, __) => const SizedBox(height: 12),
+                              itemBuilder: (context, i) {
+                                final o = orders[i];
+                                final status = _trackingLabel(o);
+                                final color = _statusColor(o);
+                                return SoftGlass(
+                                  radius: 22,
+                                  padding: const EdgeInsets.all(14),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Expanded(
+                                            child: Text(
+                                              o['order_number']?.toString() ?? 'Order',
+                                              style: F.ui(14, color: Dream.roseDeep, weight: FontWeight.w800),
+                                            ),
+                                          ),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                            decoration: BoxDecoration(
+                                              color: color.withValues(alpha: 0.14),
+                                              borderRadius: BorderRadius.circular(999),
+                                            ),
+                                            child: Text(
+                                              status,
+                                              style: F.ui(11, color: color, weight: FontWeight.w800),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Text(_itemsSummary(o), style: F.ui(13, weight: FontWeight.w600)),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        o['delivery_address']?.toString() ?? '',
+                                        style: F.ui(12, color: Dream.mist),
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      const SizedBox(height: 10),
+                                      Row(
+                                        children: [
+                                          Text(
+                                            _money(o['total']),
+                                            style: F.ui(15, color: Dream.roseDeep, weight: FontWeight.w800),
+                                          ),
+                                          const Spacer(),
+                                          if (o['payment_status'] == 'paid')
+                                            Text(
+                                              'Paid',
+                                              style: F.ui(11, color: const Color(0xFF5B8C6A), weight: FontWeight.w800),
+                                            )
+                                          else
+                                            Text(
+                                              _prettyStatus(o['payment_status']?.toString()),
+                                              style: F.ui(11, color: Dream.mist, weight: FontWeight.w700),
+                                            ),
+                                        ],
+                                      ),
+                                      if (o['assigned_rider'] != null || o['scheduled_date'] != null) ...[
+                                        const SizedBox(height: 8),
+                                        Text(
+                                          [
+                                            if (o['assigned_rider'] != null) 'Rider: ${o['assigned_rider']}',
+                                            if (o['scheduled_date'] != null)
+                                              'Sched: ${o['scheduled_date']}${o['scheduled_time'] != null ? ' ${o['scheduled_time']}' : ''}',
+                                          ].join(' · '),
+                                          style: F.ui(11, color: Dream.mist),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class CategoriesScreen extends StatelessWidget {
   const CategoriesScreen({
     super.key,
@@ -2885,7 +3616,10 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => VariantSheet(product: widget.product, checkoutMode: checkout),
+      builder: (sheetCtx) => keepWishlist(
+        context,
+        VariantSheet(product: widget.product, checkoutMode: checkout),
+      ),
     );
   }
 
@@ -3204,6 +3938,85 @@ class _VariantSheetState extends State<VariantSheet> {
     return widget.product.price;
   }
 
+  void _commit({required bool addOnly}) {
+    final p = widget.product;
+    final size = selectedSize;
+    final sizeId = size?.id ??
+        p.sizeId ??
+        CartController.localSizeKey(p.name, sizeLabel);
+
+    // Capture before pop — sheet context becomes invalid after dismiss.
+    final cart = CartScope.of(context);
+    final wishlist = WishlistScope.of(context);
+    final navigator = Navigator.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+
+    cart.addFromProduct(
+      p,
+      sizeLabel: sizeLabel,
+      quantity: qty,
+      sizeId: sizeId,
+      priceFrom: size?.priceFrom ?? p.sortPrice,
+    );
+
+    navigator.pop();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (addOnly) {
+        messenger.showSnackBar(
+          SnackBar(
+            behavior: SnackBarBehavior.floating,
+            margin: const EdgeInsets.fromLTRB(16, 0, 16, 88),
+            backgroundColor: Dream.roseDeep,
+            duration: const Duration(seconds: 2),
+            content: Row(
+              children: [
+                const Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Added $qty× ${p.name} to cart',
+                    style: F.ui(13, color: Colors.white),
+                  ),
+                ),
+              ],
+            ),
+            action: SnackBarAction(
+              label: 'View',
+              textColor: Colors.white,
+              onPressed: () {
+                navigator.push(
+                  _dreamRoute(
+                    WishlistScope(
+                      controller: wishlist,
+                      child: CartScope(
+                        controller: cart,
+                        child: const CartScreen(),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        );
+        return;
+      }
+
+      navigator.push(
+        _dreamRoute(
+          WishlistScope(
+            controller: wishlist,
+            child: CartScope(
+              controller: cart,
+              child: const CartScreen(),
+            ),
+          ),
+        ),
+      );
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final p = widget.product;
@@ -3353,40 +4166,25 @@ class _VariantSheetState extends State<VariantSheet> {
                 const SizedBox(height: 22),
                 Row(
                   children: [
-                    Expanded(
-                      child: BloomTap(
-                        onTap: () {
-                          final cart = CartScope.of(context);
-                          final messenger = ScaffoldMessenger.of(context);
-                          final name = p.name;
-                          final n = qty;
-                          Navigator.pop(context);
-                          cart.add(name, n);
-                          messenger.showSnackBar(
-                            SnackBar(content: Text('Added $n × $name ($sizeLabel)', style: F.ui(13, color: Colors.white))),
-                          );
-                        },
-                        child: Container(
-                          height: 50,
-                          alignment: Alignment.center,
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(color: Dream.roseDeep, width: 1.5),
+                    if (!widget.checkoutMode)
+                      Expanded(
+                        child: BloomTap(
+                          onTap: () => _commit(addOnly: true),
+                          child: Container(
+                            height: 50,
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: Dream.roseDeep, width: 1.5),
+                            ),
+                            child: Text('Add to Cart', style: F.ui(13, color: Dream.roseDeep, weight: FontWeight.w800)),
                           ),
-                          child: Text('Add to Cart', style: F.ui(13, color: Dream.roseDeep, weight: FontWeight.w800)),
                         ),
                       ),
-                    ),
-                    const SizedBox(width: 10),
+                    if (!widget.checkoutMode) const SizedBox(width: 10),
                     Expanded(
                       child: BloomTap(
-                        onTap: () {
-                          Navigator.pop(context);
-                          Navigator.push(
-                            context,
-                            _dreamRoute(CartScreen(product: p, quantity: qty, color: sizeLabel)),
-                          );
-                        },
+                        onTap: () => _commit(addOnly: false),
                         child: Container(
                           height: 50,
                           alignment: Alignment.center,
@@ -3402,7 +4200,7 @@ class _VariantSheetState extends State<VariantSheet> {
                             child: FittedBox(
                               fit: BoxFit.scaleDown,
                               child: Text(
-                                'Check Out',
+                                widget.checkoutMode ? 'Buy Now' : 'Check Out',
                                 style: F.ui(12, color: Colors.white, weight: FontWeight.w800),
                               ),
                             ),
@@ -3422,16 +4220,7 @@ class _VariantSheetState extends State<VariantSheet> {
 }
 
 class CartScreen extends StatefulWidget {
-  const CartScreen({
-    super.key,
-    required this.product,
-    required this.quantity,
-    required this.color,
-  });
-
-  final FlowerProduct product;
-  final int quantity;
-  final String color;
+  const CartScreen({super.key});
 
   @override
   State<CartScreen> createState() => _CartScreenState();
@@ -3439,95 +4228,458 @@ class CartScreen extends StatefulWidget {
 
 class _CartScreenState extends State<CartScreen> {
   bool placing = false;
+  final Set<int> selected = {};
+  final Set<int> knownIds = {};
+  bool seeded = false;
 
-  int? get sizeId {
-    final match = widget.product.sizes.where((s) => s.label == widget.color);
-    if (match.isNotEmpty) return match.first.id;
-    if (widget.product.sizes.isNotEmpty) return widget.product.sizes.first.id;
-    return widget.product.sizeId;
+  void _syncSelection(CartController cart) {
+    final ids = cart.items.map((e) => e.sizeId).toSet();
+    selected.removeWhere((id) => !ids.contains(id));
+    knownIds.removeWhere((id) => !ids.contains(id));
+
+    if (!seeded) {
+      selected.addAll(ids);
+      knownIds.addAll(ids);
+      seeded = true;
+      return;
+    }
+
+    // Only auto-select brand-new cart lines; keep user deselects.
+    for (final id in ids) {
+      if (!knownIds.contains(id)) {
+        selected.add(id);
+        knownIds.add(id);
+      }
+    }
   }
 
-  Future<void> _placeOrder() async {
-    final id = sizeId;
-    if (id == null) {
+  String _money(int amount) {
+    final raw = amount.toString();
+    final withComma = raw.length > 3
+        ? '${raw.substring(0, raw.length - 3)},${raw.substring(raw.length - 3)}'
+        : raw;
+    return '₱$withComma+';
+  }
+
+  List<CartItem> _selectedItems(CartController cart) {
+    return cart.items.where((item) => selected.contains(item.sizeId)).toList();
+  }
+
+  void _toggleAll(CartController cart) {
+    setState(() {
+      if (selected.length == cart.items.length) {
+        selected.clear();
+      } else {
+        selected
+          ..clear()
+          ..addAll(cart.items.map((e) => e.sizeId));
+      }
+    });
+  }
+
+  void _goCheckout(CartController cart) {
+    final lines = _selectedItems(cart);
+    if (lines.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('This product has no size to checkout. Refresh the shop.', style: F.ui(13, color: Colors.white))),
+        SnackBar(
+          content: Text('Select at least one bloom to checkout.', style: F.ui(13, color: Colors.white)),
+        ),
       );
       return;
     }
-    setState(() => placing = true);
-    try {
-      final result = await OrderApi().placeOrder(sizeId: id, quantity: widget.quantity);
-      if (!mounted) return;
-      final number = (result['data'] as Map?)?['order_number']?.toString() ?? '';
-      await showDialog<void>(
-        context: context,
-        barrierDismissible: false,
-        builder: (ctx) => Dialog(
+
+    Navigator.of(context).push(
+      _dreamRoute(
+        keepWishlist(
+          context,
+          CheckoutScreen(items: List<CartItem>.from(lines)),
+        ),
+      ),
+    );
+  }
+
+  Widget _checkBox({required bool on, required VoidCallback? onTap}) {
+    return BloomTap(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        width: 24,
+        height: 24,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: on ? Dream.petal : null,
+          color: on ? null : Colors.white,
+          border: Border.all(color: on ? Dream.roseDeep : Dream.blush, width: 1.6),
+        ),
+        child: on ? const Icon(Icons.check_rounded, size: 14, color: Colors.white) : null,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cart = CartScope.of(context);
+
+    return DreamWorld(
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        appBar: AppBar(
           backgroundColor: Colors.transparent,
-          insetPadding: const EdgeInsets.symmetric(horizontal: 28),
-          child: SoftGlass(
-            radius: 28,
-            padding: const EdgeInsets.fromLTRB(22, 28, 22, 20),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 72,
-                  height: 72,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: Dream.petal,
-                    boxShadow: [
-                      BoxShadow(color: Dream.rose.withValues(alpha: 0.35), blurRadius: 16, offset: const Offset(0, 8)),
+          elevation: 0,
+          foregroundColor: Dream.ink,
+          title: Text('Your Cart', style: F.script(34, color: Dream.roseDeep)),
+        ),
+        body: ListenableBuilder(
+          listenable: cart,
+          builder: (context, _) {
+            _syncSelection(cart);
+
+            if (cart.isEmpty) {
+              return Center(
+                child: SoftGlass(
+                  radius: 28,
+                  padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 28),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.shopping_bag_outlined, size: 42, color: Dream.rose.withValues(alpha: 0.7)),
+                      const SizedBox(height: 12),
+                      Text('Your cart is empty', style: F.display(22)),
+                      const SizedBox(height: 6),
+                      Text('Browse blooms and add your favorites.', style: F.ui(13, color: Dream.mist)),
+                      const SizedBox(height: 18),
+                      BloomTap(
+                        onTap: () => Navigator.pop(context),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                          decoration: BoxDecoration(
+                            gradient: Dream.petal,
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          child: Text('Continue Shopping', style: F.ui(13, color: Colors.white, weight: FontWeight.w800)),
+                        ),
+                      ),
                     ],
                   ),
-                  child: const Icon(Icons.check_rounded, color: Colors.white, size: 38),
                 ),
-                const SizedBox(height: 16),
-                Text('Order confirmed', style: F.display(28, weight: FontWeight.w700)),
-                const SizedBox(height: 8),
-                Text(
-                  number.isEmpty
-                      ? 'Thank you! Your bloom is being prepared.'
-                      : 'Thank you! Your bloom is being prepared.\n$number',
-                  textAlign: TextAlign.center,
-                  style: F.ui(13, color: Dream.mist, height: 1.4),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  '${widget.quantity} × ${widget.product.name}',
-                  textAlign: TextAlign.center,
-                  style: F.ui(13, color: Dream.roseDeep, weight: FontWeight.w800),
-                ),
-                const SizedBox(height: 22),
-                BloomTap(
-                  onTap: () => Navigator.of(ctx).pop(),
-                  child: Container(
-                    height: 48,
-                    width: double.infinity,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      gradient: Dream.petal,
-                      borderRadius: BorderRadius.circular(16),
+              );
+            }
+
+            final picked = _selectedItems(cart);
+            final selectedQty = picked.fold<int>(0, (sum, item) => sum + item.quantity);
+            final selectedTotal = picked.fold<int>(0, (sum, item) => sum + item.lineTotal);
+            final allOn = selected.length == cart.items.length;
+
+            return Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+                  child: SoftGlass(
+                    radius: 18,
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    child: Row(
+                      children: [
+                        _checkBox(
+                          on: allOn,
+                          onTap: placing ? null : () => _toggleAll(cart),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            allOn ? 'Deselect all' : 'Select all',
+                            style: F.ui(13, weight: FontWeight.w700),
+                          ),
+                        ),
+                        Text(
+                          '${selected.length}/${cart.items.length} selected',
+                          style: F.ui(12, color: Dream.mist),
+                        ),
+                      ],
                     ),
-                    child: Text('Done', style: F.ui(14, color: Colors.white, weight: FontWeight.w800)),
+                  ),
+                ),
+                Expanded(
+                  child: ListView.separated(
+                    padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
+                    itemCount: cart.items.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 12),
+                    itemBuilder: (context, index) {
+                      final item = cart.items[index];
+                      final on = selected.contains(item.sizeId);
+                      return FloatIn(
+                        child: SoftGlass(
+                          radius: 24,
+                          padding: const EdgeInsets.all(14),
+                          border: on ? Dream.rose.withValues(alpha: 0.55) : null,
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Padding(
+                                padding: const EdgeInsets.only(top: 30),
+                                child: _checkBox(
+                                  on: on,
+                                  onTap: placing
+                                      ? null
+                                      : () => setState(() {
+                                            if (on) {
+                                              selected.remove(item.sizeId);
+                                            } else {
+                                              selected.add(item.sizeId);
+                                            }
+                                          }),
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(16),
+                                child: NetImage(url: item.imageUrl, width: 84, height: 84),
+                              ),
+                              const SizedBox(width: 14),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(item.name, style: F.display(18)),
+                                    const SizedBox(height: 4),
+                                    Text('Size: ${item.sizeLabel}', style: F.ui(12, color: Dream.mist)),
+                                    Text(item.priceDisplay, style: F.ui(14, color: Dream.roseDeep, weight: FontWeight.w800)),
+                                    const SizedBox(height: 10),
+                                    SoftGlass(
+                                      radius: 14,
+                                      padding: EdgeInsets.zero,
+                                      child: SizedBox(
+                                        width: 118,
+                                        height: 36,
+                                        child: Row(
+                                          children: [
+                                            Expanded(
+                                              child: InkWell(
+                                                onTap: placing
+                                                    ? null
+                                                    : () => cart.setQuantity(item.sizeId, item.quantity - 1),
+                                                child: const Icon(Icons.remove_rounded, color: Dream.mist, size: 18),
+                                              ),
+                                            ),
+                                            Text(
+                                              '${item.quantity}',
+                                              style: F.ui(14, color: Dream.roseDeep, weight: FontWeight.w800),
+                                            ),
+                                            Expanded(
+                                              child: InkWell(
+                                                onTap: placing
+                                                    ? null
+                                                    : () => cart.setQuantity(item.sizeId, item.quantity + 1),
+                                                child: const Icon(Icons.add_rounded, color: Dream.mist, size: 18),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              BloomTap(
+                                onTap: placing
+                                    ? null
+                                    : () {
+                                        selected.remove(item.sizeId);
+                                        cart.remove(item.sizeId);
+                                      },
+                                child: const Icon(Icons.close_rounded, color: Dream.mist, size: 18),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+                Container(
+                  padding: EdgeInsets.fromLTRB(20, 12, 20, 16 + MediaQuery.paddingOf(context).bottom),
+                  decoration: BoxDecoration(
+                    color: const Color(0xF2FFF8FB),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Dream.rose.withValues(alpha: 0.08),
+                        blurRadius: 12,
+                        offset: const Offset(0, -4),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    children: [
+                      Row(
+                        children: [
+                          Text(
+                            picked.isEmpty
+                                ? 'No items selected'
+                                : 'Selected ($selectedQty pcs)',
+                            style: F.ui(13, color: Dream.mist),
+                          ),
+                          const Spacer(),
+                          Text(
+                            picked.isEmpty ? '₱0' : _money(selectedTotal),
+                            style: F.ui(18, color: Dream.roseDeep, weight: FontWeight.w800),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: BloomTap(
+                              onTap: placing ? null : () => Navigator.pop(context),
+                              child: Container(
+                                height: 50,
+                                alignment: Alignment.center,
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(16),
+                                  border: Border.all(color: Dream.roseDeep, width: 1.5),
+                                ),
+                                child: Text(
+                                  'Continue Shopping',
+                                  style: F.ui(11, color: Dream.roseDeep, weight: FontWeight.w800),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: BloomTap(
+                              onTap: picked.isEmpty ? null : () => _goCheckout(cart),
+                              child: Opacity(
+                                opacity: picked.isEmpty ? 0.45 : 1,
+                                child: Container(
+                                  height: 50,
+                                  alignment: Alignment.center,
+                                  decoration: BoxDecoration(
+                                    gradient: Dream.petal,
+                                    borderRadius: BorderRadius.circular(16),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Dream.rose.withValues(alpha: 0.35),
+                                        blurRadius: 14,
+                                        offset: const Offset(0, 6),
+                                      ),
+                                    ],
+                                  ),
+                                  child: Text(
+                                    picked.isEmpty
+                                        ? 'Select to checkout'
+                                        : 'Checkout (${picked.length})',
+                                    style: F.ui(11, color: Colors.white, weight: FontWeight.w800),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
                 ),
               ],
-            ),
-          ),
+            );
+          },
         ),
+      ),
+    );
+  }
+}
+
+// ═══════════════════════════════════════════
+// CHECKOUT + PAYMONGO RETURN
+// ═══════════════════════════════════════════
+class CheckoutScreen extends StatefulWidget {
+  const CheckoutScreen({super.key, required this.items});
+  final List<CartItem> items;
+
+  @override
+  State<CheckoutScreen> createState() => _CheckoutScreenState();
+}
+
+class _CheckoutScreenState extends State<CheckoutScreen> {
+  final formKey = GlobalKey<FormState>();
+  final recipient = TextEditingController();
+  final contact = TextEditingController();
+  final address = TextEditingController(text: 'Quezon City');
+  final notes = TextEditingController();
+  bool submitting = false;
+  static const deliveryFee = 0;
+
+  int get subtotal => widget.items.fold(0, (sum, i) => sum + i.lineTotal);
+  int get total => subtotal + deliveryFee;
+
+  String _money(int amount) {
+    final raw = amount.toString();
+    final withComma = raw.length > 3
+        ? '${raw.substring(0, raw.length - 3)},${raw.substring(raw.length - 3)}'
+        : raw;
+    return '₱$withComma';
+  }
+
+  @override
+  void dispose() {
+    recipient.dispose();
+    contact.dispose();
+    address.dispose();
+    notes.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pay() async {
+    if (!(formKey.currentState?.validate() ?? false)) return;
+    setState(() => submitting = true);
+    try {
+      final result = await OrderApi().checkout(
+        items: [
+          for (final item in widget.items)
+            (sizeId: item.sizeId, quantity: item.quantity),
+        ],
+        recipientName: recipient.text.trim(),
+        recipientContact: contact.text.trim(),
+        deliveryAddress: address.text.trim(),
+        deliveryNotes: notes.text.trim().isEmpty ? null : notes.text.trim(),
+        deliveryFee: deliveryFee.toDouble(),
       );
       if (!mounted) return;
-      Navigator.of(context).pop();
+
+      final data = result['data'] as Map<String, dynamic>? ?? {};
+      final checkoutUrl = data['checkout_url']?.toString();
+      final orderId = data['id'];
+
+      if (checkoutUrl == null || checkoutUrl.isEmpty) {
+        throw OrderApiException('No PayMongo checkout URL returned. Check PAYMONGO_SECRET_KEY.');
+      }
+
+      // Persist pending checkout so return page can clear cart lines.
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+        'amora_pending_checkout',
+        jsonEncode({
+          'order_id': orderId,
+          'size_ids': [for (final i in widget.items) i.sizeId],
+        }),
+      );
+
+      // Flutter web: full-page redirect (launchUrl often does nothing in Safari).
+      if (openExternalUrl(checkoutUrl)) return;
+
+      final uri = Uri.parse(checkoutUrl);
+      final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!opened && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not open payment page. URL: $checkoutUrl', style: F.ui(13, color: Colors.white))),
+        );
+      }
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(e.toString(), style: F.ui(13, color: Colors.white))),
       );
     } finally {
-      if (mounted) setState(() => placing = false);
+      if (mounted) setState(() => submitting = false);
     }
   }
 
@@ -3540,61 +4692,307 @@ class _CartScreenState extends State<CartScreen> {
           backgroundColor: Colors.transparent,
           elevation: 0,
           foregroundColor: Dream.ink,
-          title: Text('Your Cart', style: F.script(34, color: Dream.roseDeep)),
+          title: Text('Checkout', style: F.script(34, color: Dream.roseDeep)),
         ),
-        body: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
+        body: Form(
+          key: formKey,
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 120),
             children: [
-              FloatIn(
-                child: SoftGlass(
-                  radius: 24,
-                  padding: const EdgeInsets.all(14),
-                  child: Row(
-                    children: [
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(16),
-                        child: NetImage(url: widget.product.imageUrl, width: 84, height: 84),
-                      ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(widget.product.name, style: F.display(20)),
-                            Text('Size: ${widget.color} · Qty: ${widget.quantity}', style: F.ui(12, color: Dream.mist)),
-                            Text(widget.product.price, style: F.ui(15, color: Dream.roseDeep, weight: FontWeight.w800)),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
+              SoftGlass(
+                radius: 22,
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Delivery details', style: F.display(22)),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: recipient,
+                      style: F.ui(14),
+                      decoration: _fieldDeco('Recipient name'),
+                      validator: (v) => (v == null || v.trim().length < 2) ? 'Required' : null,
+                    ),
+                    const SizedBox(height: 10),
+                    TextFormField(
+                      controller: contact,
+                      style: F.ui(14),
+                      keyboardType: TextInputType.phone,
+                      decoration: _fieldDeco('Contact number'),
+                      validator: (v) => (v == null || v.trim().length < 10) ? 'Enter a valid number' : null,
+                    ),
+                    const SizedBox(height: 10),
+                    TextFormField(
+                      controller: address,
+                      style: F.ui(14),
+                      maxLines: 2,
+                      decoration: _fieldDeco('Delivery address'),
+                      validator: (v) => (v == null || v.trim().length < 5) ? 'Required' : null,
+                    ),
+                    const SizedBox(height: 10),
+                    TextFormField(
+                      controller: notes,
+                      style: F.ui(14),
+                      maxLines: 2,
+                      decoration: _fieldDeco('Notes / greeting (optional)'),
+                    ),
+                  ],
                 ),
               ),
-              const Spacer(),
-              BloomTap(
-                onTap: placing ? null : () { _placeOrder(); },
-                child: Container(
-                  height: 52,
-                  width: double.infinity,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    gradient: Dream.petal,
-                    borderRadius: BorderRadius.circular(18),
-                    boxShadow: [
-                      BoxShadow(color: Dream.rose.withValues(alpha: 0.35), blurRadius: 14, offset: const Offset(0, 6)),
+              const SizedBox(height: 14),
+              SoftGlass(
+                radius: 22,
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Order summary', style: F.display(22)),
+                    const SizedBox(height: 10),
+                    for (final item in widget.items) ...[
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Text(
+                              '${item.quantity}× ${item.name} (${item.sizeLabel})',
+                              style: F.ui(13, weight: FontWeight.w600),
+                            ),
+                          ),
+                          Text(_money(item.lineTotal), style: F.ui(13, color: Dream.roseDeep, weight: FontWeight.w800)),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
                     ],
-                  ),
-                  child: placing
-                      ? const SizedBox(
-                          width: 22,
-                          height: 22,
-                          child: CircularProgressIndicator(strokeWidth: 2.4, color: Colors.white),
-                        )
-                      : Text('Place Order', style: F.ui(15, color: Colors.white, weight: FontWeight.w800)),
+                    const Divider(height: 20),
+                    Row(
+                      children: [
+                        Text('Subtotal', style: F.ui(13, color: Dream.mist)),
+                        const Spacer(),
+                        Text(_money(subtotal), style: F.ui(13, weight: FontWeight.w700)),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        Text('Delivery', style: F.ui(13, color: Dream.mist)),
+                        const Spacer(),
+                        Text(deliveryFee == 0 ? 'Free' : _money(deliveryFee), style: F.ui(13, weight: FontWeight.w700)),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Text('Total', style: F.ui(15, weight: FontWeight.w800)),
+                        const Spacer(),
+                        Text(_money(total), style: F.ui(18, color: Dream.roseDeep, weight: FontWeight.w800)),
+                      ],
+                    ),
+                  ],
                 ),
               ),
             ],
+          ),
+        ),
+        bottomNavigationBar: Padding(
+          padding: EdgeInsets.fromLTRB(20, 8, 20, 16 + MediaQuery.paddingOf(context).bottom),
+          child: BloomTap(
+            onTap: submitting ? null : _pay,
+            child: Container(
+              height: 52,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                gradient: Dream.petal,
+                borderRadius: BorderRadius.circular(18),
+                boxShadow: [
+                  BoxShadow(color: Dream.rose.withValues(alpha: 0.35), blurRadius: 14, offset: const Offset(0, 6)),
+                ],
+              ),
+              child: submitting
+                  ? const SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(strokeWidth: 2.4, color: Colors.white),
+                    )
+                  : Text('Checkout', style: F.ui(15, color: Colors.white, weight: FontWeight.w800)),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  InputDecoration _fieldDeco(String label) {
+    return InputDecoration(
+      labelText: label,
+      labelStyle: F.ui(12, color: Dream.mist),
+      filled: true,
+      fillColor: Colors.white.withValues(alpha: 0.85),
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide(color: Dream.blush)),
+      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide(color: Dream.blush)),
+      focusedBorder: const OutlineInputBorder(
+        borderRadius: BorderRadius.all(Radius.circular(14)),
+        borderSide: BorderSide(color: Dream.roseDeep, width: 1.4),
+      ),
+    );
+  }
+}
+
+class PaymentReturnScreen extends StatefulWidget {
+  const PaymentReturnScreen({
+    super.key,
+    required this.success,
+    required this.onDone,
+    this.orderId,
+  });
+
+  final bool success;
+  final int? orderId;
+  final VoidCallback onDone;
+
+  @override
+  State<PaymentReturnScreen> createState() => _PaymentReturnScreenState();
+}
+
+class _PaymentReturnScreenState extends State<PaymentReturnScreen> {
+  bool checking = true;
+  bool paid = false;
+  String message = 'Confirming payment…';
+  String? orderNumber;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.success) {
+      _confirm();
+    } else {
+      checking = false;
+      message = 'Payment cancelled. Your cart items are still saved.';
+    }
+  }
+
+  Future<void> _confirm() async {
+    var orderId = widget.orderId;
+    List<int> sizeIds = [];
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString('amora_pending_checkout');
+      if (raw != null) {
+        final map = jsonDecode(raw) as Map<String, dynamic>;
+        orderId ??= (map['order_id'] as num?)?.toInt();
+        sizeIds = ((map['size_ids'] as List?) ?? const [])
+            .map((e) => (e as num).toInt())
+            .toList();
+      }
+
+      if (orderId == null) {
+        setState(() {
+          checking = false;
+          message = 'Payment returned, but order id is missing. Check Orders in admin after a moment.';
+        });
+        return;
+      }
+
+      Map<String, dynamic>? last;
+      for (var i = 0; i < 8; i++) {
+        last = await OrderApi().paymentStatus(orderId);
+        paid = last['paid'] == true || (last['data'] as Map?)?['payment_status'] == 'paid';
+        orderNumber = (last['data'] as Map?)?['order_number']?.toString();
+        if (paid) break;
+        await Future<void>.delayed(const Duration(milliseconds: 900));
+      }
+
+      if (paid && sizeIds.isNotEmpty) {
+        // Clear checked-out lines from persisted cart on next MainShell load
+        final cartRaw = prefs.getString('amora_cart_v1');
+        if (cartRaw != null) {
+          final list = (jsonDecode(cartRaw) as List)
+              .whereType<Map>()
+              .map((e) => Map<String, dynamic>.from(e))
+              .where((e) => !sizeIds.contains((e['sizeId'] as num).toInt()))
+              .toList();
+          await prefs.setString('amora_cart_v1', jsonEncode(list));
+        }
+        await prefs.remove('amora_pending_checkout');
+      }
+
+      if (!mounted) return;
+      setState(() {
+        checking = false;
+        message = paid
+            ? 'Payment received! Your bloom order is confirmed.'
+            : 'Still waiting for PayMongo confirmation. If you already paid, refresh in a few seconds or check admin Orders.';
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        checking = false;
+        message = e.toString();
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      body: Center(
+        child: SoftGlass(
+          radius: 28,
+          padding: const EdgeInsets.fromLTRB(24, 28, 24, 22),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 360),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (checking)
+                  const SizedBox(
+                    width: 36,
+                    height: 36,
+                    child: CircularProgressIndicator(strokeWidth: 2.6, color: Dream.roseDeep),
+                  )
+                else
+                  Icon(
+                    paid ? Icons.check_circle_rounded : (widget.success ? Icons.hourglass_top_rounded : Icons.cancel_outlined),
+                    size: 48,
+                    color: paid ? Dream.roseDeep : Dream.mist,
+                  ),
+                const SizedBox(height: 14),
+                Text(
+                  widget.success ? (paid ? 'Payment successful' : 'Confirming…') : 'Payment cancelled',
+                  style: F.display(26),
+                  textAlign: TextAlign.center,
+                ),
+                if (orderNumber != null) ...[
+                  const SizedBox(height: 6),
+                  Text(orderNumber!, style: F.ui(13, color: Dream.roseDeep, weight: FontWeight.w800)),
+                ],
+                const SizedBox(height: 10),
+                Text(message, style: F.ui(13, color: Dream.mist, height: 1.4), textAlign: TextAlign.center),
+                const SizedBox(height: 20),
+                BloomTap(
+                  onTap: checking
+                      ? null
+                      : () {
+                          cleanBrowserQuery();
+                          widget.onDone();
+                        },
+                  child: Container(
+                    height: 48,
+                    width: double.infinity,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      gradient: Dream.petal,
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Text(
+                      paid ? 'Back to shop' : 'Continue',
+                      style: F.ui(14, color: Colors.white, weight: FontWeight.w800),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),

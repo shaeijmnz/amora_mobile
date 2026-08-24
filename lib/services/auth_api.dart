@@ -175,4 +175,40 @@ class AuthApi {
     await prefs.remove(_tokenKey);
     await prefs.remove(_userKey);
   }
+
+  Future<Map<String, dynamic>?> getSavedUser() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_userKey);
+    if (raw == null || raw.isEmpty) return null;
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is Map<String, dynamic>) return decoded;
+    } catch (_) {}
+    return null;
+  }
+
+  Future<Map<String, dynamic>?> fetchMe() async {
+    final token = await getToken();
+    if (token == null || token.isEmpty) return null;
+    final response = await http.get(
+      Uri.parse('${ApiConfig.baseUrl}/me'),
+      headers: {
+        'Accept': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+    );
+    if (response.statusCode < 200 || response.statusCode >= 300) return getSavedUser();
+    final body = await _decode(response);
+    final user = body['user'] ?? body['data'] ?? body;
+    if (user is Map<String, dynamic>) {
+      await prefsSetUser(user);
+      return user;
+    }
+    return getSavedUser();
+  }
+
+  Future<void> prefsSetUser(Map<String, dynamic> user) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_userKey, jsonEncode(user));
+  }
 }

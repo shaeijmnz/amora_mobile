@@ -12,6 +12,9 @@ use Illuminate\Database\Eloquent\Model;
     'status',
     'payment_status',
     'payment_method',
+    'paymongo_checkout_id',
+    'paymongo_payment_id',
+    'paid_at',
     'subtotal',
     'delivery_fee',
     'discount',
@@ -19,6 +22,7 @@ use Illuminate\Database\Eloquent\Model;
     'recipient_name',
     'recipient_contact',
     'delivery_address',
+    'delivery_notes',
     'admin_notes',
 ])]
 class Order extends Model
@@ -30,6 +34,7 @@ class Order extends Model
             'delivery_fee' => 'decimal:2',
             'discount' => 'decimal:2',
             'total' => 'decimal:2',
+            'paid_at' => 'datetime',
         ];
     }
 
@@ -41,5 +46,10 @@ class Order extends Model
     public function items()
     {
         return $this->hasMany(OrderItem::class);
+    }
+
+    public function delivery()
+    {
+        return $this->hasOne(Delivery::class);
     }
 }

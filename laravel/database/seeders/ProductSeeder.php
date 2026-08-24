@@ -28,10 +28,10 @@ class ProductSeeder extends Seeder
                 'featured' => true,
                 'is_stem' => false,
                 'sizes' => [
-                    ['label' => '1pc', 'price' => 300],
-                    ['label' => '3pcs', 'price' => 800],
-                    ['label' => '5pcs', 'price' => 1200],
-                    ['label' => '10pcs', 'price' => 1800],
+                    ['label' => '1pc', 'price' => 1],
+                    ['label' => '3pcs', 'price' => 1],
+                    ['label' => '5pcs', 'price' => 1],
+                    ['label' => '10pcs', 'price' => 1],
                 ],
             ],
             [
@@ -44,10 +44,10 @@ class ProductSeeder extends Seeder
                 'featured' => true,
                 'is_stem' => false,
                 'sizes' => [
-                    ['label' => '1pc', 'price' => 250],
-                    ['label' => '3pcs', 'price' => 800],
-                    ['label' => '5pcs', 'price' => 1300],
-                    ['label' => '10pcs', 'price' => 1800],
+                    ['label' => '1pc', 'price' => 1],
+                    ['label' => '3pcs', 'price' => 1],
+                    ['label' => '5pcs', 'price' => 1],
+                    ['label' => '10pcs', 'price' => 1],
                 ],
             ],
             [
@@ -60,10 +60,10 @@ class ProductSeeder extends Seeder
                 'featured' => true,
                 'is_stem' => false,
                 'sizes' => [
-                    ['label' => '1pc', 'price' => 250],
-                    ['label' => '3pcs', 'price' => 800],
-                    ['label' => '5pcs', 'price' => 1300],
-                    ['label' => '10pcs', 'price' => 2000],
+                    ['label' => '1pc', 'price' => 1],
+                    ['label' => '3pcs', 'price' => 1],
+                    ['label' => '5pcs', 'price' => 1],
+                    ['label' => '10pcs', 'price' => 1],
                 ],
             ],
             [
@@ -76,10 +76,10 @@ class ProductSeeder extends Seeder
                 'featured' => true,
                 'is_stem' => false,
                 'sizes' => [
-                    ['label' => '1pc', 'price' => 250],
-                    ['label' => '3pcs', 'price' => 800],
-                    ['label' => '5pcs', 'price' => 1300],
-                    ['label' => '10pcs', 'price' => 1800],
+                    ['label' => '1pc', 'price' => 1],
+                    ['label' => '3pcs', 'price' => 1],
+                    ['label' => '5pcs', 'price' => 1],
+                    ['label' => '10pcs', 'price' => 1],
                 ],
             ],
             [
@@ -93,7 +93,7 @@ class ProductSeeder extends Seeder
                 'is_stem' => true,
                 'note' => $stemNote,
                 'sizes' => [
-                    ['label' => '1 stem', 'price' => 400],
+                    ['label' => '1 stem', 'price' => 1],
                 ],
             ],
             [
@@ -107,7 +107,7 @@ class ProductSeeder extends Seeder
                 'is_stem' => true,
                 'note' => $stemNote,
                 'sizes' => [
-                    ['label' => '1 stem', 'price' => 400],
+                    ['label' => '1 stem', 'price' => 1],
                 ],
             ],
             [
@@ -121,7 +121,7 @@ class ProductSeeder extends Seeder
                 'is_stem' => true,
                 'note' => $stemNote,
                 'sizes' => [
-                    ['label' => '1 stem', 'price' => 300],
+                    ['label' => '1 stem', 'price' => 1],
                 ],
             ],
         ];

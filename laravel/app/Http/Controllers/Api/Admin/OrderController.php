@@ -10,10 +10,16 @@ class OrderController extends Controller
 {
     public function index(Request $request)
     {
+        // Default: only paid orders appear in admin ops.
+        $paymentStatus = $request->get('payment_status', 'paid');
+
         $orders = Order::query()
-            ->with(['customer', 'items.product', 'items.size'])
+            ->with(['customer', 'items.product', 'items.size', 'delivery'])
+            ->when(
+                $paymentStatus && $paymentStatus !== 'all',
+                fn ($q) => $q->where('payment_status', $paymentStatus)
+            )
             ->when($request->status && $request->status !== 'all', fn ($q) => $q->where('status', $request->status))
-            ->when($request->payment_status && $request->payment_status !== 'all', fn ($q) => $q->where('payment_status', $request->payment_status))
             ->latest()
             ->get()
             ->map(fn (Order $o) => $this->payload($o));
@@ -23,7 +29,7 @@ class OrderController extends Controller
 
     public function show(Order $order)
     {
-        $order->load(['customer', 'items.product', 'items.size']);
+        $order->load(['customer', 'items.product', 'items.size', 'delivery']);
 
         return response()->json(['data' => $this->payload($order)]);
     }
@@ -37,7 +43,7 @@ class OrderController extends Controller
         ]);
 
         $order->update($data);
-        $order->load(['customer', 'items.product', 'items.size']);
+        $order->load(['customer', 'items.product', 'items.size', 'delivery']);
 
         return response()->json([
             'message' => 'Order updated.',
@@ -57,6 +63,7 @@ class OrderController extends Controller
             'status' => $order->status,
             'payment_status' => $order->payment_status,
             'payment_method' => $order->payment_method,
+            'paid_at' => $order->paid_at?->toIso8601String(),
             'subtotal' => (float) $order->subtotal,
             'delivery_fee' => (float) $order->delivery_fee,
             'discount' => (float) $order->discount,
@@ -64,6 +71,7 @@ class OrderController extends Controller
             'recipient_name' => $order->recipient_name,
             'recipient_contact' => $order->recipient_contact,
             'delivery_address' => $order->delivery_address,
+            'delivery_notes' => $order->delivery_notes,
             'admin_notes' => $order->admin_notes,
             'created_at' => $order->created_at?->toIso8601String(),
             'items' => $order->items->map(fn ($item) => [
