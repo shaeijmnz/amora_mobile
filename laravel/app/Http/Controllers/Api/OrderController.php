@@ -7,6 +7,7 @@ use App\Models\Order;
 use App\Models\ProductSize;
 use App\Services\OrderPaymentService;
 use App\Services\PayMongoService;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -47,6 +48,8 @@ class OrderController extends Controller
             'delivery_address' => ['required', 'string', 'max:500'],
             'delivery_notes' => ['nullable', 'string', 'max:500'],
             'delivery_fee' => ['nullable', 'numeric', 'min:0'],
+            'requested_delivery_date' => ['required', 'date', 'after_or_equal:today'],
+            'requested_delivery_time' => ['required', 'string', 'max:20'],
             'items' => ['required', 'array', 'min:1'],
             'items.*.size_id' => ['required', 'integer', 'exists:product_sizes,id'],
             'items.*.quantity' => ['required', 'integer', 'min:1'],
@@ -93,6 +96,8 @@ class OrderController extends Controller
                     'recipient_contact' => $data['recipient_contact'],
                     'delivery_address' => $data['delivery_address'],
                     'delivery_notes' => $data['delivery_notes'] ?? null,
+                    'requested_delivery_date' => $data['requested_delivery_date'],
+                    'requested_delivery_time' => $data['requested_delivery_time'],
                 ]);
 
                 $order->items()->createMany($lineItems);
@@ -137,7 +142,7 @@ class OrderController extends Controller
                 'show_line_items' => true,
                 'description' => 'Amora Florals '.$order->order_number,
                 'line_items' => $paymongoLines,
-                'payment_method_types' => ['qrph'],
+                'payment_method_types' => ['qrph', 'card', 'gcash'],
                 'success_url' => $successUrl,
                 'cancel_url' => $cancelUrl,
                 'reference_number' => $order->order_number,
@@ -235,8 +240,13 @@ class OrderController extends Controller
             'delivery_notes' => $order->delivery_notes,
             'delivery_status' => $order->delivery?->status,
             'assigned_rider' => $order->delivery?->assigned_rider,
-            'scheduled_date' => $order->delivery?->scheduled_date?->format('Y-m-d'),
-            'scheduled_time' => $order->delivery?->scheduled_time,
+            'scheduled_date' => $order->delivery?->scheduled_date?->format('Y-m-d')
+                ?? $order->requested_delivery_date?->format('Y-m-d'),
+            'scheduled_time' => $order->delivery?->scheduled_time ?? $order->requested_delivery_time,
+            'requested_delivery_date' => $order->requested_delivery_date?->format('Y-m-d'),
+            'requested_delivery_time' => $order->requested_delivery_time,
+            'failed_reason' => $order->delivery?->failed_reason,
+            'tracking' => $this->trackingSteps($order),
             'created_at' => $order->created_at?->toIso8601String(),
             'items' => $order->items->map(fn ($item) => [
                 'id' => $item->id,
@@ -250,5 +260,77 @@ class OrderController extends Controller
                 'personalized_message' => $item->personalized_message,
             ])->values(),
         ];
+    }
+
+    /**
+     * Buyer-facing parcel timeline. Each step is reached once the order/delivery
+     * passes it, so the mobile app can draw progress without extra API calls.
+     */
+    private function trackingSteps(Order $order): array
+    {
+        $paid = $order->payment_status === 'paid';
+        $orderStatus = (string) $order->status;
+        $deliveryStatus = (string) ($order->delivery?->status ?? '');
+
+        $preparing = in_array($orderStatus, ['confirmed', 'being_prepared', 'ready_for_delivery', 'dispatched', 'delivered', 'completed'], true)
+            || in_array($deliveryStatus, ['scheduled', 'assigned', 'preparing_for_dispatch', 'dispatched', 'out_for_delivery', 'delivered'], true);
+
+        $onTheWay = in_array($orderStatus, ['dispatched', 'delivered', 'completed'], true)
+            || in_array($deliveryStatus, ['dispatched', 'out_for_delivery', 'delivered'], true);
+
+        $delivered = in_array($orderStatus, ['delivered', 'completed'], true)
+            || $deliveryStatus === 'delivered';
+
+        $failed = $deliveryStatus === 'delivery_failed';
+        $lastAttempt = collect($order->delivery?->attempts ?? [])->last();
+
+        return [
+            [
+                'key' => 'placed',
+                'label' => 'Order placed',
+                'done' => true,
+                'at' => $this->stamp($order->created_at),
+            ],
+            [
+                'key' => 'paid',
+                'label' => $paid ? 'Payment received' : 'Awaiting payment',
+                'done' => $paid,
+                'at' => $this->stamp($order->paid_at),
+            ],
+            [
+                'key' => 'preparing',
+                'label' => 'Bouquet being prepared',
+                'done' => $preparing,
+                'at' => null,
+            ],
+            [
+                'key' => 'on_the_way',
+                'label' => $order->delivery?->assigned_rider
+                    ? 'Out for delivery · '.$order->delivery->assigned_rider
+                    : 'Out for delivery',
+                'done' => $onTheWay,
+                'at' => null,
+            ],
+            [
+                'key' => 'delivered',
+                'label' => $failed ? 'Delivery failed' : 'Delivered',
+                // A failed attempt still closes the timeline, just in red.
+                'done' => $delivered || $failed,
+                'at' => $this->stamp($lastAttempt['attempted_at'] ?? null),
+            ],
+        ];
+    }
+
+    private function stamp(mixed $value): ?string
+    {
+        if (blank($value)) {
+            return null;
+        }
+
+        try {
+            return Carbon::parse($value)->format('M j, g:i A');
+        } catch (\Throwable) {
+            return null;
+        }
     }
 }

@@ -46,6 +46,8 @@ class OrderApi {
     required String recipientName,
     required String recipientContact,
     required String deliveryAddress,
+    required String requestedDate,
+    required String requestedTime,
     String? deliveryNotes,
     double deliveryFee = 0,
   }) async {
@@ -68,6 +70,8 @@ class OrderApi {
         if (deliveryNotes != null && deliveryNotes.trim().isNotEmpty)
           'delivery_notes': deliveryNotes.trim(),
         'delivery_fee': deliveryFee,
+        'requested_delivery_date': requestedDate,
+        'requested_delivery_time': requestedTime,
         'payment_method': 'paymongo',
         'items': [
           for (final item in items)
@@ -129,11 +133,16 @@ class OrderApi {
     String recipientContact = '09171234567',
     String deliveryAddress = 'Quezon City (mobile checkout)',
   }) {
+    final tomorrow = DateTime.now().add(const Duration(days: 1));
     return checkout(
       items: items,
       recipientName: recipientName,
       recipientContact: recipientContact,
       deliveryAddress: deliveryAddress,
+      requestedDate: '${tomorrow.year.toString().padLeft(4, '0')}-'
+          '${tomorrow.month.toString().padLeft(2, '0')}-'
+          '${tomorrow.day.toString().padLeft(2, '0')}',
+      requestedTime: '10:00',
     );
   }
 }

@@ -23,6 +23,8 @@ use Illuminate\Database\Eloquent\Model;
     'recipient_contact',
     'delivery_address',
     'delivery_notes',
+    'requested_delivery_date',
+    'requested_delivery_time',
     'admin_notes',
 ])]
 class Order extends Model
@@ -35,6 +37,7 @@ class Order extends Model
             'discount' => 'decimal:2',
             'total' => 'decimal:2',
             'paid_at' => 'datetime',
+            'requested_delivery_date' => 'date',
         ];
     }
 

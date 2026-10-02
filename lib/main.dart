@@ -37,6 +37,20 @@ class AmoraFloralsApp extends StatelessWidget {
           primary: Dream.rose,
           surface: Dream.cream,
         ),
+        // A rose seed makes Material's tertiary tones amber, which the delivery
+        // time picker uses for the AM/PM block. Pin it back to the blush palette.
+        timePickerTheme: TimePickerThemeData(
+          dayPeriodColor: Dream.blush,
+          dayPeriodTextColor: Dream.ink,
+          dayPeriodBorderSide: const BorderSide(color: Dream.rose),
+          hourMinuteColor: Dream.blush.withValues(alpha: 0.45),
+          hourMinuteTextColor: Dream.ink,
+          dialBackgroundColor: Dream.blush.withValues(alpha: 0.35),
+          dialHandColor: Dream.rose,
+          dialTextColor: Dream.ink,
+          entryModeIconColor: Dream.roseDeep,
+          helpTextStyle: const TextStyle(color: Dream.ink, fontWeight: FontWeight.w700),
+        ),
         // Don't block first frame on Google Fonts network fetch (common Safari white screen).
         textTheme: ThemeData.light().textTheme.apply(
           bodyColor: Dream.ink,
@@ -1489,33 +1503,49 @@ class _MainShellState extends State<MainShell> {
     try {
       final apiItems = await ProductApi().fetchProducts();
       if (!mounted || apiItems.isEmpty) return;
-      setState(() {
-        products = apiItems
-            .map(
-              (p) => FlowerProduct(
-                id: p.id,
-                sizeId: p.sizeId,
-                name: p.name,
-                price: p.priceLabel,
-                rating: p.rating,
-                reviews: p.reviews,
-                imageUrl: p.imageUrl,
-                category: p.category,
-                gallery: p.gallery,
-                sizes: p.sizes
-                    .map((s) => SizePrice(id: s.id, label: s.label, priceFrom: s.price.round()))
-                    .toList(),
-                description: p.description ??
-                    'Pre-order bloom from Amora Florals. Prices may change without prior notice due to supply and seasonal fluctuations. Free greeting card included.',
-                note: p.note,
-                isStem: p.isStem,
-              ),
-            )
-            .toList();
-      });
+      final mapped = apiItems
+          .map(
+            (p) => FlowerProduct(
+              id: p.id,
+              sizeId: p.sizeId,
+              name: p.name,
+              price: p.priceLabel,
+              rating: p.rating,
+              reviews: p.reviews,
+              imageUrl: _catalogImage(p.name, p.imageUrl),
+              category: p.category,
+              gallery: p.gallery
+                  .map((url) => _catalogImage(p.name, url))
+                  .where((url) => url.isNotEmpty)
+                  .toList(),
+              sizes: p.sizes
+                  .map((s) => SizePrice(id: s.id, label: s.label, priceFrom: s.price.round()))
+                  .toList(),
+              description: p.description ??
+                  'Pre-order bloom from Amora Florals. Prices may change without prior notice due to supply and seasonal fluctuations. Free greeting card included.',
+              note: p.note,
+              isStem: p.isStem,
+            ),
+          )
+          .where((p) => p.imageUrl.isNotEmpty)
+          .toList();
+      if (mapped.isEmpty) return;
+      setState(() => products = mapped);
     } catch (_) {
       // Keep [_localCatalog] when Laravel is offline.
     }
+  }
+
+  String _catalogImage(String name, String url) {
+    if (url.isNotEmpty && !url.toLowerCase().contains('unsplash')) {
+      return url;
+    }
+    for (final local in _localCatalog) {
+      if (local.name.toLowerCase() == name.toLowerCase()) {
+        return local.imageUrl;
+      }
+    }
+    return url;
   }
 
   @override
@@ -3086,6 +3116,15 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> {
     return '$names$extra';
   }
 
+  /// Steps come from the API so mobile and admin always agree on progress.
+  List<Map<String, dynamic>> _trackingSteps(Map<String, dynamic> o) {
+    final raw = o['tracking'];
+    if (raw is List) {
+      return raw.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+    }
+    return const [];
+  }
+
   @override
   Widget build(BuildContext context) {
     return SafeArea(
@@ -3233,15 +3272,23 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> {
                                             ),
                                         ],
                                       ),
-                                      if (o['assigned_rider'] != null || o['scheduled_date'] != null) ...[
-                                        const SizedBox(height: 8),
-                                        Text(
-                                          [
-                                            if (o['assigned_rider'] != null) 'Rider: ${o['assigned_rider']}',
-                                            if (o['scheduled_date'] != null)
-                                              'Sched: ${o['scheduled_date']}${o['scheduled_time'] != null ? ' ${o['scheduled_time']}' : ''}',
-                                          ].join(' · '),
-                                          style: F.ui(11, color: Dream.mist),
+                                      const SizedBox(height: 10),
+                                      _OrderScheduleRow(order: o),
+                                      const SizedBox(height: 12),
+                                      _OrderTracker(steps: _trackingSteps(o)),
+                                      if (o['failed_reason'] != null) ...[
+                                        const SizedBox(height: 10),
+                                        Container(
+                                          width: double.infinity,
+                                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+                                          decoration: BoxDecoration(
+                                            color: Dream.rust.withValues(alpha: 0.1),
+                                            borderRadius: BorderRadius.circular(12),
+                                          ),
+                                          child: Text(
+                                            'Note from the shop: ${o['failed_reason']}',
+                                            style: F.ui(11, color: Dream.rust, weight: FontWeight.w700),
+                                          ),
                                         ),
                                       ],
                                     ],
@@ -3253,6 +3300,195 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Buyer-facing copy of the slot they picked at checkout, plus the rider the
+/// shop assigned to it.
+class _OrderScheduleRow extends StatelessWidget {
+  const _OrderScheduleRow({required this.order});
+
+  final Map<String, dynamic> order;
+
+  String get _slot {
+    final date = (order['scheduled_date'] ?? order['requested_delivery_date'])?.toString();
+    final time = (order['scheduled_time'] ?? order['requested_delivery_time'])?.toString();
+    if (date == null || date.isEmpty) return 'To be scheduled';
+    final parsed = DateTime.tryParse(date);
+    final pretty = parsed == null ? date : _fmtDate(parsed);
+    if (time == null || time.isEmpty) return pretty;
+    return '$pretty · ${_fmtTime(time)}';
+  }
+
+  static String _fmtDate(DateTime d) {
+    const months = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    ];
+    return '${months[d.month - 1]} ${d.day}, ${d.year}';
+  }
+
+  static String _fmtTime(String raw) {
+    final parts = raw.split(':');
+    final hour = int.tryParse(parts.first);
+    if (hour == null) return raw;
+    final minute = parts.length > 1 ? parts[1].padLeft(2, '0') : '00';
+    final suffix = hour >= 12 ? 'PM' : 'AM';
+    final h12 = hour % 12 == 0 ? 12 : hour % 12;
+    return '$h12:$minute $suffix';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final rider = order['assigned_rider']?.toString();
+    return Row(
+      children: [
+        Icon(Icons.event_available_rounded, size: 14, color: Dream.roseDeep),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Text(
+            _slot,
+            style: F.ui(11, color: Dream.ink, weight: FontWeight.w700),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Icon(
+          Icons.delivery_dining_rounded,
+          size: 14,
+          color: rider == null || rider.isEmpty ? Dream.mist : Dream.roseDeep,
+        ),
+        const SizedBox(width: 5),
+        Text(
+          rider == null || rider.isEmpty ? 'Rider pending' : rider,
+          style: F.ui(11, color: Dream.mist, weight: FontWeight.w700),
+        ),
+      ],
+    );
+  }
+}
+
+/// Vertical progress rail driven by the API's tracking steps.
+class _OrderTracker extends StatelessWidget {
+  const _OrderTracker({required this.steps});
+
+  final List<Map<String, dynamic>> steps;
+
+  @override
+  Widget build(BuildContext context) {
+    if (steps.isEmpty) return const SizedBox.shrink();
+
+    final lastDone = steps.lastIndexWhere((s) => s['done'] == true);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      decoration: BoxDecoration(
+        color: Dream.cream.withValues(alpha: 0.7),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Dream.blush.withValues(alpha: 0.8)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Order tracking',
+            style: F.ui(11, color: Dream.roseDeep, weight: FontWeight.w800),
+          ),
+          const SizedBox(height: 10),
+          for (var i = 0; i < steps.length; i++)
+            _TrackerStep(
+              label: steps[i]['label']?.toString() ?? '',
+              at: steps[i]['at']?.toString(),
+              done: steps[i]['done'] == true,
+              current: i == lastDone,
+              isLast: i == steps.length - 1,
+              failed: (steps[i]['label']?.toString() ?? '').toLowerCase().contains('fail'),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TrackerStep extends StatelessWidget {
+  const _TrackerStep({
+    required this.label,
+    required this.at,
+    required this.done,
+    required this.current,
+    required this.isLast,
+    required this.failed,
+  });
+
+  final String label;
+  final String? at;
+  final bool done;
+  final bool current;
+  final bool isLast;
+  final bool failed;
+
+  @override
+  Widget build(BuildContext context) {
+    final active = failed && done
+        ? Dream.rust
+        : done
+            ? const Color(0xFF5B8C6A)
+            : Dream.blush;
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Column(
+          children: [
+            Container(
+              width: 16,
+              height: 16,
+              decoration: BoxDecoration(
+                color: done ? active : Colors.white,
+                shape: BoxShape.circle,
+                border: Border.all(color: active, width: 1.8),
+              ),
+              child: done
+                  ? Icon(
+                      failed ? Icons.close_rounded : Icons.check_rounded,
+                      size: 10,
+                      color: Colors.white,
+                    )
+                  : null,
+            ),
+            if (!isLast)
+              Container(
+                width: 2,
+                height: 22,
+                margin: const EdgeInsets.symmetric(vertical: 2),
+                color: done ? active.withValues(alpha: 0.5) : Dream.blush.withValues(alpha: 0.6),
+              ),
+          ],
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Padding(
+            padding: EdgeInsets.only(bottom: isLast ? 0 : 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: F.ui(
+                    12,
+                    color: done ? Dream.ink : Dream.mist,
+                    weight: current || done ? FontWeight.w800 : FontWeight.w600,
+                  ),
+                ),
+                if (at != null && at!.isNotEmpty)
+                  Text(at!, style: F.ui(10, color: Dream.mist)),
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -4608,8 +4844,64 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   bool submitting = false;
   static const deliveryFee = 0;
 
+  DateTime? deliveryDate;
+  TimeOfDay? deliveryTime;
+
   int get subtotal => widget.items.fold(0, (sum, i) => sum + i.lineTotal);
   int get total => subtotal + deliveryFee;
+
+  String get _dateValue {
+    final d = deliveryDate;
+    if (d == null) return '';
+    return '${d.year.toString().padLeft(4, '0')}-'
+        '${d.month.toString().padLeft(2, '0')}-'
+        '${d.day.toString().padLeft(2, '0')}';
+  }
+
+  String get _timeValue {
+    final t = deliveryTime;
+    if (t == null) return '';
+    return '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+  }
+
+  String get _dateLabel {
+    final d = deliveryDate;
+    if (d == null) return 'Choose date';
+    const months = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    ];
+    return '${months[d.month - 1]} ${d.day}, ${d.year}';
+  }
+
+  String get _timeLabel {
+    final t = deliveryTime;
+    if (t == null) return 'Choose time';
+    final hour12 = t.hourOfPeriod == 0 ? 12 : t.hourOfPeriod;
+    final suffix = t.period == DayPeriod.am ? 'AM' : 'PM';
+    return '$hour12:${t.minute.toString().padLeft(2, '0')} $suffix';
+  }
+
+  Future<void> _pickDate() async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: deliveryDate ?? now.add(const Duration(days: 1)),
+      firstDate: now,
+      lastDate: now.add(const Duration(days: 90)),
+      helpText: 'Pick your delivery date',
+    );
+    if (picked != null) setState(() => deliveryDate = picked);
+  }
+
+  Future<void> _pickTime() async {
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: deliveryTime ?? const TimeOfDay(hour: 10, minute: 0),
+      helpText: 'Pick your delivery time',
+    );
+    if (picked != null) setState(() => deliveryTime = picked);
+  }
 
   String _money(int amount) {
     final raw = amount.toString();
@@ -4630,6 +4922,17 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   Future<void> _pay() async {
     if (!(formKey.currentState?.validate() ?? false)) return;
+    if (deliveryDate == null || deliveryTime == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Please choose your delivery date and time.',
+            style: F.ui(13, color: Colors.white),
+          ),
+        ),
+      );
+      return;
+    }
     setState(() => submitting = true);
     try {
       final result = await OrderApi().checkout(
@@ -4640,6 +4943,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         recipientName: recipient.text.trim(),
         recipientContact: contact.text.trim(),
         deliveryAddress: address.text.trim(),
+        requestedDate: _dateValue,
+        requestedTime: _timeValue,
         deliveryNotes: notes.text.trim().isEmpty ? null : notes.text.trim(),
         deliveryFee: deliveryFee.toDouble(),
       );
@@ -4648,6 +4953,26 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       final data = result['data'] as Map<String, dynamic>? ?? {};
       final checkoutUrl = data['checkout_url']?.toString();
       final orderId = data['id'];
+      final demoPaid = data['demo_paid'] == true || data['payment_status'] == 'paid';
+
+      if (demoPaid) {
+        final cart = CartScope.maybeOf(context);
+        for (final item in widget.items) {
+          cart?.remove(item.sizeId);
+        }
+        if (!mounted) return;
+        final orderNumber = data['order_number']?.toString() ?? 'your order';
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Paid! $orderNumber is in admin Orders.',
+              style: F.ui(13, color: Colors.white),
+            ),
+          ),
+        );
+        Navigator.of(context).popUntil((route) => route.isFirst);
+        return;
+      }
 
       if (checkoutUrl == null || checkoutUrl.isEmpty) {
         throw OrderApiException('No PayMongo checkout URL returned. Check PAYMONGO_SECRET_KEY.');
@@ -4746,6 +5071,46 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    Text('Delivery schedule', style: F.display(22)),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Pick when you want your blooms delivered.',
+                      style: F.ui(12, color: Dream.mist),
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _SchedulePick(
+                            icon: Icons.calendar_month_rounded,
+                            label: 'Date',
+                            value: _dateLabel,
+                            chosen: deliveryDate != null,
+                            onTap: _pickDate,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: _SchedulePick(
+                            icon: Icons.schedule_rounded,
+                            label: 'Time',
+                            value: _timeLabel,
+                            chosen: deliveryTime != null,
+                            onTap: _pickTime,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 14),
+              SoftGlass(
+                radius: 22,
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
                     Text('Order summary', style: F.display(22)),
                     const SizedBox(height: 10),
                     for (final item in widget.items) ...[
@@ -4832,6 +5197,60 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       focusedBorder: const OutlineInputBorder(
         borderRadius: BorderRadius.all(Radius.circular(14)),
         borderSide: BorderSide(color: Dream.roseDeep, width: 1.4),
+      ),
+    );
+  }
+}
+
+class _SchedulePick extends StatelessWidget {
+  const _SchedulePick({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.chosen,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+  final bool chosen;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return BloomTap(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.85),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: chosen ? Dream.roseDeep : Dream.blush, width: chosen ? 1.4 : 1),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(icon, size: 15, color: Dream.roseDeep),
+                const SizedBox(width: 6),
+                Text(label, style: F.ui(11, color: Dream.mist, weight: FontWeight.w700)),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              value,
+              style: F.ui(
+                13,
+                weight: FontWeight.w700,
+                color: chosen ? Dream.ink : Dream.mist,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+        ),
       ),
     );
   }
