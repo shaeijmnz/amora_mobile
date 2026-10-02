@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Delivery;
+use App\Services\AdminNotifier;
 use Illuminate\Http\Request;
 
 class DeliveryController extends Controller
@@ -74,8 +75,14 @@ class DeliveryController extends Controller
             $delivery->order?->update(['status' => 'dispatched']);
         }
 
+        $statusChanged = isset($data['status']) && $data['status'] !== $delivery->status;
+
         $delivery->update($data);
         $delivery->load(['order.customer', 'order.items.product']);
+
+        if ($statusChanged) {
+            app(AdminNotifier::class)->deliveryStatusChanged($delivery, $data['status']);
+        }
 
         return response()->json([
             'message' => 'Delivery updated.',
@@ -100,6 +107,8 @@ class DeliveryController extends Controller
             'assigned_rider' => $delivery->assigned_rider,
             'scheduled_date' => $delivery->scheduled_date?->format('Y-m-d'),
             'scheduled_time' => $delivery->scheduled_time,
+            'requested_date' => $order?->requested_delivery_date?->format('Y-m-d'),
+            'requested_time' => $order?->requested_delivery_time,
             'failed_reason' => $delivery->failed_reason,
             'proof_of_delivery_url' => $delivery->proof_of_delivery_url,
             'attempts' => $delivery->attempts ?? [],

@@ -5,8 +5,10 @@ use App\Http\Controllers\Api\Admin\CustomerController as AdminCustomerController
 use App\Http\Controllers\Api\Admin\DashboardController as AdminDashboardController;
 use App\Http\Controllers\Api\Admin\DeliveryController as AdminDeliveryController;
 use App\Http\Controllers\Api\Admin\InventoryController as AdminInventoryController;
+use App\Http\Controllers\Api\Admin\NotificationController as AdminNotificationController;
 use App\Http\Controllers\Api\Admin\OrderController as AdminOrderController;
 use App\Http\Controllers\Api\Admin\ProductController as AdminProductController;
+use App\Http\Controllers\Api\Admin\ReportController as AdminReportController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\OrderController;
 use App\Http\Controllers\Api\PayMongoWebhookController;
@@ -67,5 +69,12 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/deliveries/{delivery}', [AdminDeliveryController::class, 'show']);
         Route::patch('/deliveries/{delivery}', [AdminDeliveryController::class, 'update']);
         Route::get('/inventory', [AdminInventoryController::class, 'index']);
+        Route::patch('/inventory/{item}', [AdminInventoryController::class, 'update']);
+        Route::get('/reports', [AdminReportController::class, 'index']);
+        Route::get('/notifications', [AdminNotificationController::class, 'index']);
+        Route::get('/notifications/unread-count', [AdminNotificationController::class, 'unreadCount']);
+        Route::post('/notifications/read-all', [AdminNotificationController::class, 'markAllRead']);
+        Route::patch('/notifications/{notification}/read', [AdminNotificationController::class, 'markRead']);
+        Route::delete('/notifications/{notification}', [AdminNotificationController::class, 'destroy']);
     });
 });
