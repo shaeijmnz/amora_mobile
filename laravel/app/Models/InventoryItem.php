@@ -37,11 +37,16 @@ class InventoryItem extends Model
         return $this->belongsTo(Product::class);
     }
 
+    /**
+     * Stock hitting the minimum already counts as low, so an item sitting at
+     * exactly min_stock_level (5 by default) is flagged rather than waiting
+     * until it drops below.
+     */
     public function syncStockStatus(): void
     {
         if ($this->quantity_on_hand <= 0) {
             $this->status = 'out_of_stock';
-        } elseif ($this->quantity_on_hand < $this->min_stock_level) {
+        } elseif ($this->quantity_on_hand <= $this->min_stock_level) {
             $this->status = 'low_stock';
         } else {
             $this->status = 'in_stock';
