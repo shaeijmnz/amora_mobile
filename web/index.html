@@ -1,38 +1,56 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!--
-    If you are serving your web app in a path other than the root, change the
-    href value below to reflect the base path you are serving from.
-
-    The path provided below has to start and end with a slash "/" in order for
-    it to work correctly.
-
-    For more details:
-    * https://developer.mozilla.org/en-US/docs/Web/HTML/Element/base
-
-    This is a placeholder for base href that will be replaced by the value of
-    the `--base-href` argument provided to `flutter build`.
-  -->
   <base href="$FLUTTER_BASE_HREF">
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
-  <meta name="description" content="A new Flutter project.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Amora Florals — order bouquets for delivery around Quezon City.">
 
-  <!-- iOS meta tags & icons -->
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
-  <meta name="apple-mobile-web-app-title" content="amora_florals_mobile">
+  <meta name="apple-mobile-web-app-title" content="Amora Florals">
   <link rel="apple-touch-icon" href="icons/Icon-192.png">
 
-  <!-- Favicon -->
   <link rel="icon" type="image/png" href="favicon.png"/>
 
-  <title>amora_florals_mobile</title>
+  <title>Amora Florals</title>
   <link rel="manifest" href="manifest.json">
+  <style>
+    html, body {
+      margin: 0;
+      height: 100%;
+      background: #FBF6F3;
+    }
+    #amora-splash {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(#FBF6F3, #F5E6E4);
+      color: #C97B85;
+      font-family: Georgia, "Times New Roman", serif;
+    }
+    #amora-splash .name {
+      font-size: 44px;
+    }
+    #amora-splash .sub {
+      margin-top: 8px;
+      font-family: system-ui, sans-serif;
+      font-size: 14px;
+      color: #9A7F82;
+    }
+  </style>
 </head>
 <body>
+  <!-- Visible immediately, before the Flutter engine finishes downloading. -->
+  <div id="amora-splash">
+    <div class="name">Amora Florals</div>
+    <div class="sub">Preparing your bouquets…</div>
+  </div>
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>

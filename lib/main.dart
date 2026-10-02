@@ -1,8 +1,8 @@
 import 'dart:convert';
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:amora_florals_mobile/auth.dart';
@@ -16,8 +16,6 @@ import 'package:url_launcher/url_launcher.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  // Avoid blank first paint on Safari when font CDN is slow/blocked.
-  GoogleFonts.config.allowRuntimeFetching = false;
   runApp(const AmoraFloralsApp());
 }
 
@@ -202,11 +200,13 @@ class F {
     Color? color,
     FontWeight weight = FontWeight.w400,
   }) =>
-      GoogleFonts.allura(
+      const TextStyle(
+        fontFamily: 'Allura',
+        height: 0.95,
+      ).copyWith(
         fontSize: size,
         fontWeight: weight,
         color: color ?? Dream.ink,
-        height: 0.95,
       );
 
   static TextStyle display(
@@ -215,13 +215,15 @@ class F {
     FontWeight weight = FontWeight.w600,
     FontStyle? style,
   }) =>
-      GoogleFonts.cormorantGaramond(
+      const TextStyle(
+        fontFamily: 'CormorantGaramond',
+        height: 1.15,
+        letterSpacing: -0.3,
+      ).copyWith(
         fontSize: size,
         fontWeight: weight,
         fontStyle: style,
         color: color ?? Dream.ink,
-        height: 1.15,
-        letterSpacing: -0.3,
       );
 
   static TextStyle ui(
@@ -231,7 +233,9 @@ class F {
     double? height,
     double? tracking,
   }) =>
-      GoogleFonts.quicksand(
+      const TextStyle(
+        fontFamily: 'Quicksand',
+      ).copyWith(
         fontSize: size,
         fontWeight: weight,
         color: color ?? Dream.ink,
@@ -243,7 +247,8 @@ class F {
     double size, {
     Color? color,
   }) =>
-      GoogleFonts.montserrat(
+      TextStyle(
+        fontFamily: 'Montserrat',
         fontSize: size,
         fontWeight: FontWeight.w400,
         letterSpacing: 2.4,
@@ -623,23 +628,27 @@ class DreamWorld extends StatefulWidget {
 
 class _DreamWorldState extends State<DreamWorld>
     with SingleTickerProviderStateMixin {
-  late final AnimationController _c = AnimationController(
-    vsync: this,
-    duration: const Duration(seconds: 14),
-  )..repeat();
+  AnimationController? _c;
 
   @override
-  void dispose() {
-    _c.dispose();
-    super.dispose();
+  void initState() {
+    super.initState();
+    // A full-screen sparkle loop repaints every frame. On Safari that makes
+    // the catalog stutter while someone is scrolling through the demo, so the
+    // web build keeps the same scene still.
+    if (!kIsWeb) {
+      _c = AnimationController(vsync: this, duration: const Duration(seconds: 14))
+        ..repeat();
+    }
   }
 
   @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _c,
-      builder: (context, child) {
-        final t = _c.value;
+  void dispose() {
+    _c?.dispose();
+    super.dispose();
+  }
+
+  Widget _scene(double t, Widget? child) {
         return Stack(
           children: [
             Container(decoration: BoxDecoration(gradient: Dream.sky)),
@@ -672,7 +681,15 @@ class _DreamWorldState extends State<DreamWorld>
             child!,
           ],
         );
-      },
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final motion = _c;
+    if (motion == null) return _scene(0.35, widget.child);
+    return AnimatedBuilder(
+      animation: motion,
+      builder: (context, child) => _scene(motion.value, child),
       child: widget.child,
     );
   }
