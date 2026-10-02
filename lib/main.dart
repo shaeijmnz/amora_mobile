@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:amora_florals_mobile/auth.dart';
 import 'package:amora_florals_mobile/services/api_config.dart';
 import 'package:amora_florals_mobile/services/auth_api.dart';
+import 'package:amora_florals_mobile/services/custom_request_api.dart';
 import 'package:amora_florals_mobile/services/order_api.dart';
 import 'package:amora_florals_mobile/services/product_api.dart';
 import 'package:amora_florals_mobile/web_url_clean.dart';
@@ -2243,6 +2244,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   title: 'Order tracking',
                   subtitle: 'See checkout status & delivery',
                   onTap: widget.onOpenOrders,
+                ),
+                _ProfileTile(
+                  icon: Icons.auto_awesome_rounded,
+                  title: 'Custom bouquet request',
+                  subtitle: 'Ask the florist for a made-to-order arrangement',
+                  onTap: () => Navigator.of(context).push(
+                    _dreamRoute(const CustomRequestScreen()),
+                  ),
                 ),
                 _ProfileTile(
                   icon: Icons.chat_bubble_outline_rounded,
@@ -5187,6 +5196,342 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   }
 
   InputDecoration _fieldDeco(String label) {
+    return InputDecoration(
+      labelText: label,
+      labelStyle: F.ui(12, color: Dream.mist),
+      filled: true,
+      fillColor: Colors.white.withValues(alpha: 0.85),
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide(color: Dream.blush)),
+      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide(color: Dream.blush)),
+      focusedBorder: const OutlineInputBorder(
+        borderRadius: BorderRadius.all(Radius.circular(14)),
+        borderSide: BorderSide(color: Dream.roseDeep, width: 1.4),
+      ),
+    );
+  }
+}
+
+// ═══════════════════════════════════════════
+// CUSTOM ARRANGEMENT REQUEST
+// ═══════════════════════════════════════════
+class CustomRequestScreen extends StatefulWidget {
+  const CustomRequestScreen({super.key});
+
+  @override
+  State<CustomRequestScreen> createState() => _CustomRequestScreenState();
+}
+
+class _CustomRequestScreenState extends State<CustomRequestScreen> {
+  final formKey = GlobalKey<FormState>();
+  final occasion = TextEditingController();
+  final flowers = TextEditingController();
+  final colors = TextEditingController();
+  final budget = TextEditingController();
+  final message = TextEditingController();
+
+  String size = 'Medium';
+  DateTime? wantedDate;
+  bool submitting = false;
+  bool loadingList = true;
+  List<Map<String, dynamic>> mine = [];
+
+  static const sizes = ['Small', 'Medium', 'Large', 'Grand'];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadMine();
+  }
+
+  @override
+  void dispose() {
+    occasion.dispose();
+    flowers.dispose();
+    colors.dispose();
+    budget.dispose();
+    message.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadMine() async {
+    setState(() => loadingList = true);
+    try {
+      final list = await CustomRequestApi().list();
+      if (!mounted) return;
+      setState(() {
+        mine = list;
+        loadingList = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => loadingList = false);
+    }
+  }
+
+  String get _dateValue => wantedDate == null
+      ? ''
+      : '${wantedDate!.year.toString().padLeft(4, '0')}-'
+          '${wantedDate!.month.toString().padLeft(2, '0')}-'
+          '${wantedDate!.day.toString().padLeft(2, '0')}';
+
+  Future<void> _pickDate() async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: wantedDate ?? now.add(const Duration(days: 2)),
+      firstDate: now,
+      lastDate: now.add(const Duration(days: 90)),
+    );
+    if (picked != null) setState(() => wantedDate = picked);
+  }
+
+  Future<void> _submit() async {
+    if (!(formKey.currentState?.validate() ?? false)) return;
+    if (wantedDate == null) {
+      _toast('Please choose when you need the arrangement.');
+      return;
+    }
+
+    setState(() => submitting = true);
+    try {
+      final result = await CustomRequestApi().submit(
+        occasion: occasion.text.trim(),
+        budget: double.parse(budget.text.trim()),
+        requestedDate: _dateValue,
+        preferredFlowers: flowers.text,
+        preferredColors: colors.text,
+        bouquetSize: size,
+        message: message.text,
+      );
+      if (!mounted) return;
+      final number = result['data']?['request_number']?.toString() ?? 'Your request';
+      _toast('$number sent! The shop will review it shortly.');
+      occasion.clear();
+      flowers.clear();
+      colors.clear();
+      budget.clear();
+      message.clear();
+      setState(() => wantedDate = null);
+      _loadMine();
+    } catch (e) {
+      if (!mounted) return;
+      _toast(e.toString());
+    } finally {
+      if (mounted) setState(() => submitting = false);
+    }
+  }
+
+  void _toast(String text) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(text, style: F.ui(13, color: Colors.white))),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return DreamWorld(
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        appBar: AppBar(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          iconTheme: const IconThemeData(color: Dream.roseDeep),
+          title: Text('Custom bouquet', style: F.display(20, color: Dream.roseDeep)),
+        ),
+        body: Form(
+          key: formKey,
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(18, 8, 18, 40),
+            children: [
+              Text(
+                'Tell us your dream arrangement and the florist will quote it for you.',
+                style: F.ui(13, color: Dream.mist),
+              ),
+              const SizedBox(height: 14),
+              SoftGlass(
+                radius: 24,
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    TextFormField(
+                      controller: occasion,
+                      style: F.ui(14),
+                      decoration: _requestDeco('Occasion (e.g. Anniversary)'),
+                      validator: (v) => (v == null || v.trim().isEmpty) ? 'Required' : null,
+                    ),
+                    const SizedBox(height: 10),
+                    TextFormField(
+                      controller: flowers,
+                      style: F.ui(14),
+                      decoration: _requestDeco('Preferred flowers (optional)'),
+                    ),
+                    const SizedBox(height: 10),
+                    TextFormField(
+                      controller: colors,
+                      style: F.ui(14),
+                      decoration: _requestDeco('Preferred colors (optional)'),
+                    ),
+                    const SizedBox(height: 10),
+                    TextFormField(
+                      controller: budget,
+                      style: F.ui(14),
+                      keyboardType: TextInputType.number,
+                      decoration: _requestDeco('Budget in pesos'),
+                      validator: (v) {
+                        final amount = double.tryParse((v ?? '').trim());
+                        if (amount == null) return 'Enter a number';
+                        if (amount < 0) return 'Must be positive';
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    Text('Bouquet size', style: F.ui(12, color: Dream.mist, weight: FontWeight.w700)),
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        for (final s in sizes)
+                          BloomTap(
+                            onTap: () => setState(() => size = s),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                              decoration: BoxDecoration(
+                                color: size == s ? Dream.roseDeep : Colors.white.withValues(alpha: 0.85),
+                                borderRadius: BorderRadius.circular(999),
+                                border: Border.all(color: size == s ? Dream.roseDeep : Dream.blush),
+                              ),
+                              child: Text(
+                                s,
+                                style: F.ui(
+                                  12,
+                                  color: size == s ? Colors.white : Dream.ink,
+                                  weight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+                    _SchedulePick(
+                      icon: Icons.calendar_month_rounded,
+                      label: 'Needed by',
+                      value: wantedDate == null
+                          ? 'Choose date'
+                          : _OrderScheduleRow._fmtDate(wantedDate!),
+                      chosen: wantedDate != null,
+                      onTap: _pickDate,
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: message,
+                      style: F.ui(14),
+                      maxLines: 3,
+                      decoration: _requestDeco('Message or special details (optional)'),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 14),
+              BloomTap(
+                onTap: submitting ? null : _submit,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  decoration: BoxDecoration(
+                    gradient: Dream.petal,
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: [
+                      BoxShadow(color: Dream.rose.withValues(alpha: 0.35), blurRadius: 18),
+                    ],
+                  ),
+                  child: Center(
+                    child: Text(
+                      submitting ? 'Sending…' : 'Send request',
+                      style: F.ui(15, color: Colors.white, weight: FontWeight.w800),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 22),
+              Text('My requests', style: F.display(20)),
+              const SizedBox(height: 8),
+              if (loadingList)
+                const Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(16),
+                    child: SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(strokeWidth: 2.4, color: Dream.roseDeep),
+                    ),
+                  ),
+                )
+              else if (mine.isEmpty)
+                SoftGlass(
+                  radius: 20,
+                  padding: const EdgeInsets.all(18),
+                  child: Text(
+                    'No custom requests yet. Send one above and track the florist\'s reply here.',
+                    style: F.ui(13, color: Dream.mist),
+                  ),
+                )
+              else
+                for (final r in mine)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: SoftGlass(
+                      radius: 20,
+                      padding: const EdgeInsets.all(14),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  r['request_number']?.toString() ?? 'Request',
+                                  style: F.ui(13, color: Dream.roseDeep, weight: FontWeight.w800),
+                                ),
+                              ),
+                              Text(
+                                (r['status']?.toString() ?? '').replaceAll('_', ' '),
+                                style: F.ui(11, color: Dream.mist, weight: FontWeight.w800),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            '${r['occasion']} · ${r['bouquet_size'] ?? 'custom'}',
+                            style: F.ui(13, weight: FontWeight.w600),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            r['estimated_price'] != null
+                                ? 'Florist quote: ₱${r['estimated_price']}'
+                                : 'Budget: ₱${r['budget']} · awaiting quote',
+                            style: F.ui(12, color: Dream.mist),
+                          ),
+                          if (r['admin_notes'] != null) ...[
+                            const SizedBox(height: 6),
+                            Text(
+                              'Florist: ${r['admin_notes']}',
+                              style: F.ui(12, color: Dream.ink),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  InputDecoration _requestDeco(String label) {
     return InputDecoration(
       labelText: label,
       labelStyle: F.ui(12, color: Dream.mist),

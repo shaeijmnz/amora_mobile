@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\Admin\AuthController as AdminAuthController;
 use App\Http\Controllers\Api\Admin\CustomerController as AdminCustomerController;
+use App\Http\Controllers\Api\Admin\CustomRequestController as AdminCustomRequestController;
 use App\Http\Controllers\Api\Admin\DashboardController as AdminDashboardController;
 use App\Http\Controllers\Api\Admin\DeliveryController as AdminDeliveryController;
 use App\Http\Controllers\Api\Admin\InventoryController as AdminInventoryController;
@@ -10,6 +11,7 @@ use App\Http\Controllers\Api\Admin\OrderController as AdminOrderController;
 use App\Http\Controllers\Api\Admin\ProductController as AdminProductController;
 use App\Http\Controllers\Api\Admin\ReportController as AdminReportController;
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\CustomRequestController;
 use App\Http\Controllers\Api\OrderController;
 use App\Http\Controllers\Api\PayMongoWebhookController;
 use App\Http\Controllers\Api\ProductController;
@@ -49,6 +51,10 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/orders/{order}', [OrderController::class, 'show']);
     Route::get('/orders/{order}/payment-status', [OrderController::class, 'paymentStatus']);
 
+    // Customer custom arrangement requests
+    Route::get('/custom-requests', [CustomRequestController::class, 'index']);
+    Route::post('/custom-requests', [CustomRequestController::class, 'store']);
+
     // Admin API
     Route::prefix('admin')->middleware('admin')->group(function () {
         Route::get('/me', [AdminAuthController::class, 'me']);
@@ -70,6 +76,9 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::patch('/deliveries/{delivery}', [AdminDeliveryController::class, 'update']);
         Route::get('/inventory', [AdminInventoryController::class, 'index']);
         Route::patch('/inventory/{item}', [AdminInventoryController::class, 'update']);
+        Route::get('/custom-requests', [AdminCustomRequestController::class, 'index']);
+        Route::get('/custom-requests/{customRequest}', [AdminCustomRequestController::class, 'show']);
+        Route::patch('/custom-requests/{customRequest}', [AdminCustomRequestController::class, 'update']);
         Route::get('/reports', [AdminReportController::class, 'index']);
         Route::get('/notifications', [AdminNotificationController::class, 'index']);
         Route::get('/notifications/unread-count', [AdminNotificationController::class, 'unreadCount']);

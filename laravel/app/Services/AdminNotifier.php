@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\AdminNotification;
+use App\Models\CustomRequest;
 use App\Models\Delivery;
 use App\Models\InventoryItem;
 use App\Models\Order;
@@ -88,6 +89,24 @@ class AdminNotifier
             inventoryItemId: $item->id,
             // Re-notify when it crosses into a different level, not every sale.
             dedupeKey: "stock:{$item->id}:".($out ? 'out' : 'low'),
+        );
+    }
+
+    public function customRequestSubmitted(CustomRequest $request): void
+    {
+        $request->loadMissing('customer');
+
+        $this->push(
+            category: 'custom_requests',
+            title: "New custom request {$request->request_number}",
+            body: sprintf(
+                '%s wants a %s arrangement for %s with a budget of %s.',
+                $request->customer?->name ?? 'A customer',
+                $request->bouquet_size ?: 'custom',
+                $request->occasion,
+                '₱'.number_format((float) $request->budget, 2)
+            ),
+            dedupeKey: "custom_request:{$request->id}",
         );
     }
 
