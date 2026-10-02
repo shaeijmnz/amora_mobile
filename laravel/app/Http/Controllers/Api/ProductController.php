@@ -37,19 +37,25 @@ class ProductController extends Controller
     private function productPayload(Product $product): array
     {
         $price = (float) ($product->sizes->min('price') ?? 0);
-        $images = $product->images ?? ($product->primary_image_url ? [$product->primary_image_url] : []);
+        $gallery = $product->gallery_image_urls ?? [];
+        $images = $product->images
+            ?? ($gallery !== [] ? $gallery : ($product->primary_image_url ? [$product->primary_image_url] : []));
 
         return [
             'id' => $product->id,
             'name' => $product->name,
             'category' => $product->category ?? 'flower',
             'description' => $product->description,
+            'note' => $product->note,
             'primary_image_url' => $product->primary_image_url ?? ($images[0] ?? null),
+            'gallery_image_urls' => $gallery !== [] ? $gallery : $images,
             'images' => $images,
             'is_customisable' => (bool) $product->is_customisable,
             'customisation_items' => $product->customisation_items ?? [],
             'preparation_time_minutes' => $product->preparation_time_minutes,
+            'is_available' => (bool) $product->is_available,
             'is_featured' => (bool) $product->is_featured,
+            'is_stem' => (bool) $product->is_stem,
             'rating' => (float) ($product->rating ?? 4.5),
             'reviews_count' => (int) ($product->reviews_count ?? 0),
             'price' => $price,
