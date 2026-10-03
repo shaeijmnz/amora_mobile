@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Product;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
 class ProductController extends Controller
 {
@@ -32,15 +33,33 @@ class ProductController extends Controller
 
     public function uploadImage(Request $request)
     {
+        if (! $request->hasFile('image')) {
+            return response()->json([
+                'message' => 'Choose a JPG, PNG, or WebP photo (8 MB max).',
+            ], 422);
+        }
+
         $request->validate([
-            'image' => ['required', 'image', 'mimes:jpeg,jpg,png,webp', 'max:5120'],
+            'image' => ['required', 'image', 'mimes:jpeg,jpg,png,webp', 'max:8192'],
         ]);
 
-        $path = $request->file('image')->store('products', 'public');
+        $file = $request->file('image');
+        $extension = $file->extension() ?: 'jpg';
+        $filename = Str::uuid()->toString().'.'.$extension;
+        $path = $file->storeAs('products', $filename, 'public');
+        $stored = Storage::disk('public')->path($path);
 
-        return response()->json([
-            'url' => config('app.url') . '/storage/' . $path,
-        ]);
+        $publicDir = $this->publicUploadDirectory();
+        if ($publicDir) {
+            if (! copy($stored, $publicDir.'/'.$filename)) {
+                return response()->json(['message' => 'Could not publish the photo.'], 500);
+            }
+            chmod($publicDir.'/'.$filename, 0644);
+
+            return response()->json(['url' => '/images/uploads/'.$filename]);
+        }
+
+        return response()->json(['url' => '/storage/'.$path]);
     }
 
     public function store(Request $request)
@@ -62,7 +81,7 @@ class ProductController extends Controller
             'sizes.*.price'            => ['required', 'numeric', 'min:0'],
         ]);
 
-        $images = $data['images'] ?? [];
+        $images = array_values($data['images'] ?? []);
         $primaryUrl = $data['primary_image_url'] ?? ($images[0] ?? null);
 
         $product = Product::create([
@@ -70,11 +89,9 @@ class ProductController extends Controller
             'category'                 => $data['category'] ?? 'flower',
             'description'              => $data['description'] ?? null,
             'primary_image_url'        => $primaryUrl,
-            'images'                   => $images,
+            'gallery_image_urls'       => $images,
             'is_available'             => $data['is_available'] ?? true,
             'is_featured'              => $data['is_featured'] ?? false,
-            'is_customisable'          => $data['is_customisable'] ?? false,
-            'customisation_items'      => $data['customisation_items'] ?? null,
             'preparation_time_minutes' => $data['preparation_time_minutes'] ?? 45,
             'rating'                   => 4.5,
             'reviews_count'            => 0,
@@ -109,11 +126,14 @@ class ProductController extends Controller
         ]);
 
         $sizes = $data['sizes'] ?? null;
-        unset($data['sizes']);
+        unset($data['sizes'], $data['is_customisable'], $data['customisation_items']);
 
-        if (isset($data['images']) && is_array($data['images']) && !empty($data['images'])) {
-            if (empty($data['primary_image_url'])) {
-                $data['primary_image_url'] = $data['images'][0];
+        if (array_key_exists('images', $data)) {
+            $images = array_values($data['images'] ?? []);
+            $data['gallery_image_urls'] = $images;
+            unset($data['images']);
+            if (empty($data['primary_image_url']) && $images !== []) {
+                $data['primary_image_url'] = $images[0];
             }
         }
 
@@ -150,9 +170,17 @@ class ProductController extends Controller
         return response()->json(['data' => $this->payload($newProduct)], 201);
     }
 
+    private function publicUploadDirectory(): ?string
+    {
+        $dir = '/var/www/amora-mobile/images/uploads';
+
+        return is_dir($dir) && is_writable($dir) ? $dir : null;
+    }
+
     private function payload(Product $p): array
     {
-        $images = $p->images ?? ($p->primary_image_url ? [$p->primary_image_url] : []);
+        $gallery = is_array($p->gallery_image_urls) ? array_values($p->gallery_image_urls) : [];
+        $images = $gallery !== [] ? $gallery : ($p->primary_image_url ? [$p->primary_image_url] : []);
 
         return [
             'id'                       => $p->id,

@@ -18,8 +18,27 @@ class ApiConfig {
     return origin;
   }
 
-  /// Laravel may return `/images/products/foo.jpg`. Use bundled bouquet
-  /// photos when we have the same file. Never keep Unsplash placeholders.
+  /// Seeded bouquet files shipped inside the app. Anything else — including
+  /// a photo uploaded from the admin — is loaded from the site itself.
+  static const bundledProductImages = {
+    'carnation.jpg',
+    'carnation_1.jpg',
+    'china_roses.jpg',
+    'china_roses_1.jpg',
+    'gerbera_daisy.jpg',
+    'gerbera_daisy_1.jpg',
+    'hydrangea.jpg',
+    'hydrangea_1.jpg',
+    'stargazer_lilies.jpg',
+    'stargazer_lilies_1.jpg',
+    'sunflower.jpg',
+    'sunflower_1.jpg',
+    'sunlight_chrysanthemum.jpg',
+    'sunlight_chrysanthemum_1.jpg',
+  };
+
+  /// Laravel may return `/images/products/foo.jpg` or `/images/uploads/….jpg`.
+  /// Use the bundled photo only when that exact file ships with the app.
   static String resolveImageUrl(String? raw) {
     final url = (raw ?? '').trim();
     if (url.isEmpty) return url;
@@ -30,8 +49,8 @@ class ApiConfig {
       return '';
     }
 
-    final file = url.split('?').first.split('/').last;
-    if (file.isNotEmpty && (url.contains('products/') || url.contains('images/'))) {
+    final file = url.split('?').first.split('/').last.toLowerCase();
+    if (bundledProductImages.contains(file)) {
       return 'assets/images/products/$file';
     }
     if (url.startsWith('http://') || url.startsWith('https://')) return url;
