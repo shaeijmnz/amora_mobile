@@ -75,8 +75,8 @@ class MessageController extends Controller
 
         return [
             'id' => $conversation?->id,
-            'name' => 'Amora Studio',
-            'role' => 'Shop admin',
+            'name' => 'Admin',
+            'role' => 'Amora Florals',
             'preview' => $conversation?->last_body ?: 'Ask the shop about a bouquet or an order.',
             'time' => $this->timeLabel($conversation?->last_message_at),
             'unread' => (int) ($conversation?->customer_unread ?? 0),

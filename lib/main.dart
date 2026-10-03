@@ -543,8 +543,8 @@ ChatThread studioThread({
 }) {
   return ChatThread(
     id: 'amora',
-    name: 'Amora Studio',
-    role: 'Shop admin',
+    name: 'Admin',
+    role: 'Amora Florals',
     avatar: '',
     preview: preview,
     time: time,
@@ -2235,7 +2235,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 _ProfileTile(
                   icon: Icons.chat_bubble_outline_rounded,
                   title: 'Messages',
-                  subtitle: 'Chat with florists',
+                  subtitle: 'Chat with the admin',
                   onTap: widget.onOpenMessages,
                 ),
                 _ProfileTile(
@@ -6022,7 +6022,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                           children: [
                             Text(t.name, style: F.display(18)),
                             Text(
-                              t.online ? 'Online · arranging blooms' : 'Away',
+                              t.online ? 'Online · shop admin' : 'Away',
                               style: F.ui(11, color: t.online ? Dream.sage : Dream.mist, weight: FontWeight.w600),
                             ),
                           ],
