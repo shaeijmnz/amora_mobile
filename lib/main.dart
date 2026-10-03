@@ -197,7 +197,7 @@ class LandingScreen extends StatelessWidget {
                     child: ConstrainedBox(
                       constraints: const BoxConstraints(maxWidth: 980),
                       child: Padding(
-                        padding: EdgeInsets.fromLTRB(wide ? 36 : 22, wide ? 20 : 16, wide ? 36 : 22, wide ? 20 : 28),
+                        padding: EdgeInsets.fromLTRB(wide ? 36 : 20, wide ? 20 : 8, wide ? 36 : 20, wide ? 20 : 12),
                         child: _LandingStory(wide: wide, onLogin: onLogin, onSignup: onSignup),
                       ),
                     ),
@@ -293,12 +293,12 @@ class _LandingStoryState extends State<_LandingStory> {
     final hero = Column(
       crossAxisAlignment: align,
       children: [
-        const FlowerLogo(size: 58),
-        const SizedBox(height: 6),
-        Text('Amora', style: F.script(wide ? 78 : 64, color: Dream.roseDeep), textAlign: TextAlign.center),
+        FlowerLogo(size: wide ? 58 : 48),
+        SizedBox(height: wide ? 6 : 2),
+        Text('Amora', style: F.script(wide ? 78 : 56, color: Dream.roseDeep), textAlign: TextAlign.center),
         Transform.translate(
           offset: const Offset(0, -6),
-          child: Text('Florals', style: F.display(wide ? 24 : 20, style: FontStyle.italic)),
+          child: Text('Florals', style: F.display(wide ? 24 : 18, style: FontStyle.italic)),
         ),
         const SizedBox(height: 8),
         ConstrainedBox(
@@ -322,7 +322,7 @@ class _LandingStoryState extends State<_LandingStory> {
           Text('WHAT THIS IS', style: F.ui(11, color: Dream.roseDeep, weight: FontWeight.w700, tracking: 1.5)),
           const SizedBox(height: 6),
           Text(
-            'Amora is the system for this Quezon City flower shop. Customers place bouquet orders here. The shop runs those orders, the stock, and the messages in the same place.',
+            'Amora is the system for this Quezon City flower shop. The counter runs orders, stock, and messages here.',
             style: F.ui(13.5, color: Dream.ink, height: 1.45),
           ),
         ],
@@ -343,7 +343,7 @@ class _LandingStoryState extends State<_LandingStory> {
           const SizedBox(height: 8),
           for (var i = 0; i < bouquets.length; i++)
             Container(
-              padding: const EdgeInsets.symmetric(vertical: 9),
+              padding: EdgeInsets.symmetric(vertical: wide ? 9 : 6),
               decoration: BoxDecoration(
                 border: Border(bottom: BorderSide(color: Dream.blush.withValues(alpha: i == bouquets.length - 1 ? 0 : 0.85))),
               ),
@@ -389,11 +389,11 @@ class _LandingStoryState extends State<_LandingStory> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           hero,
-          const SizedBox(height: 16),
+          const SizedBox(height: 10),
           about,
-          const SizedBox(height: 16),
+          const SizedBox(height: 10),
           counter,
-          const SizedBox(height: 16),
+          const SizedBox(height: 10),
           actions,
         ],
       );
@@ -431,7 +431,7 @@ class _LandingPoint extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.only(bottom: 6),
       child: Row(
         children: [
           Container(
