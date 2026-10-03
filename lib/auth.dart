@@ -13,7 +13,10 @@ class DemoCustomer {
 
 /// Login / Sign up gate → OTP (signup) → flower shop ([MainShell]).
 class AuthScreen extends StatefulWidget {
-  const AuthScreen({super.key});
+  const AuthScreen({super.key, this.startOnLogin = false, this.onBack});
+
+  final bool startOnLogin;
+  final VoidCallback? onBack;
 
   @override
   State<AuthScreen> createState() => _AuthScreenState();
@@ -21,7 +24,7 @@ class AuthScreen extends StatefulWidget {
 
 class _AuthScreenState extends State<AuthScreen>
     with SingleTickerProviderStateMixin {
-  bool signup = true;
+  late bool signup = !widget.startOnLogin;
   bool obscure = true;
   bool loading = false;
   String? authError;
@@ -145,6 +148,17 @@ class _AuthScreenState extends State<AuthScreen>
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
+                        if (widget.onBack != null)
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: BloomTap(
+                              onTap: widget.onBack,
+                              child: const Padding(
+                                padding: EdgeInsets.only(bottom: 6),
+                                child: Icon(Icons.arrow_back_rounded, color: Dream.roseDeep),
+                              ),
+                            ),
+                          ),
                         const FlowerLogo(size: 58),
                         const SizedBox(height: 8),
                         Text('Amora', style: F.script(54, color: Dream.roseDeep)),

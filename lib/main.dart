@@ -92,6 +92,8 @@ class SessionGate extends StatefulWidget {
 class _SessionGateState extends State<SessionGate> {
   bool checking = true;
   bool signedIn = false;
+  bool showAuth = false;
+  bool startOnLogin = true;
   String? paymentReturn; // success | cancel
   int? paymentOrderId;
 
@@ -135,7 +137,24 @@ class _SessionGateState extends State<SessionGate> {
         ),
       );
     }
-    if (!signedIn) return const AuthScreen();
+    if (!signedIn) {
+      if (!showAuth) {
+        return LandingScreen(
+          onLogin: () => setState(() {
+            startOnLogin = true;
+            showAuth = true;
+          }),
+          onSignup: () => setState(() {
+            startOnLogin = false;
+            showAuth = true;
+          }),
+        );
+      }
+      return AuthScreen(
+        startOnLogin: startOnLogin,
+        onBack: () => setState(() => showAuth = false),
+      );
+    }
 
     if (paymentReturn == 'success' || paymentReturn == 'cancel') {
       return PaymentReturnScreen(
@@ -151,6 +170,180 @@ class _SessionGateState extends State<SessionGate> {
     }
 
     return const MainShell();
+  }
+}
+
+/// First screen on the phone and in the browser, before login.
+class LandingScreen extends StatelessWidget {
+  const LandingScreen({super.key, required this.onLogin, required this.onSignup});
+
+  final VoidCallback onLogin;
+  final VoidCallback onSignup;
+
+  @override
+  Widget build(BuildContext context) {
+    return DreamWorld(
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        body: SafeArea(
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final wide = constraints.maxWidth >= 860;
+              final story = _LandingStory(wide: wide, onLogin: onLogin, onSignup: onSignup);
+              if (!wide) {
+                return SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(22, 18, 22, 28),
+                  physics: const BouncingScrollPhysics(),
+                  child: story,
+                );
+              }
+              return Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 1040),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 36, vertical: 28),
+                    child: story,
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _LandingStory extends StatelessWidget {
+  const _LandingStory({required this.wide, required this.onLogin, required this.onSignup});
+
+  final bool wide;
+  final VoidCallback onLogin;
+  final VoidCallback onSignup;
+
+  @override
+  Widget build(BuildContext context) {
+    final intro = Column(
+      crossAxisAlignment: wide ? CrossAxisAlignment.start : CrossAxisAlignment.center,
+      children: [
+        const FlowerLogo(size: 72),
+        const SizedBox(height: 10),
+        Text('Amora', style: F.script(wide ? 92 : 72, color: Dream.roseDeep), textAlign: TextAlign.center),
+        Transform.translate(
+          offset: const Offset(0, -8),
+          child: Text('Florals', style: F.display(wide ? 28 : 22, style: FontStyle.italic)),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Soft bouquets, wrapped for Quezon City.',
+          style: F.ui(wide ? 16 : 14, color: Dream.ink, height: 1.45),
+          textAlign: wide ? TextAlign.left : TextAlign.center,
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Pick a date, leave a note, and message the shop when you need something special.',
+          style: F.ui(13, color: Dream.mist, height: 1.5),
+          textAlign: wide ? TextAlign.left : TextAlign.center,
+        ),
+      ],
+    );
+
+    final actions = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _LandingPoint(icon: Icons.local_florist_rounded, title: 'Fresh arrangements', text: 'Real bouquets from the shop, not stock photos.'),
+        const SizedBox(height: 10),
+        _LandingPoint(icon: Icons.event_rounded, title: 'You choose the slot', text: 'Set the delivery date and time when you order.'),
+        const SizedBox(height: 10),
+        _LandingPoint(icon: Icons.chat_bubble_outline_rounded, title: 'Chat with admin', text: 'One thread with the shop. Replies land here.'),
+        const SizedBox(height: 18),
+        BloomTap(
+          onTap: onLogin,
+          child: Container(
+            height: 52,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(gradient: Dream.petal, borderRadius: BorderRadius.circular(18)),
+            child: Text('Log in', style: F.ui(15, color: Colors.white, weight: FontWeight.w800)),
+          ),
+        ),
+        const SizedBox(height: 10),
+        BloomTap(
+          onTap: onSignup,
+          child: Container(
+            height: 52,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.8),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: Dream.blush),
+            ),
+            child: Text('Create account', style: F.ui(15, color: Dream.roseDeep, weight: FontWeight.w800)),
+          ),
+        ),
+      ],
+    );
+
+    if (!wide) {
+      return Column(
+        children: [
+          intro,
+          const SizedBox(height: 22),
+          actions,
+        ],
+      );
+    }
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Expanded(child: intro),
+        const SizedBox(width: 36),
+        Expanded(
+          child: SoftGlass(
+            radius: 32,
+            padding: const EdgeInsets.fromLTRB(22, 22, 22, 22),
+            glow: Dream.rose,
+            child: actions,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _LandingPoint extends StatelessWidget {
+  const _LandingPoint({required this.icon, required this.title, required this.text});
+
+  final IconData icon;
+  final String title;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return SoftGlass(
+      radius: 18,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      child: Row(
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(color: Dream.blush.withValues(alpha: 0.55), shape: BoxShape.circle),
+            child: Icon(icon, color: Dream.roseDeep, size: 20),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: F.display(16)),
+                Text(text, style: F.ui(12, color: Dream.mist, height: 1.35)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 
