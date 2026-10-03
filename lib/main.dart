@@ -189,20 +189,18 @@ class LandingScreen extends StatelessWidget {
           child: LayoutBuilder(
             builder: (context, constraints) {
               final wide = constraints.maxWidth >= 860;
-              final story = _LandingStory(wide: wide, onLogin: onLogin, onSignup: onSignup);
-              if (!wide) {
-                return SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(22, 18, 22, 28),
-                  physics: const BouncingScrollPhysics(),
-                  child: story,
-                );
-              }
-              return Center(
+              return SingleChildScrollView(
+                physics: const BouncingScrollPhysics(),
                 child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 1040),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 36, vertical: 28),
-                    child: story,
+                  constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                  child: Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 980),
+                      child: Padding(
+                        padding: EdgeInsets.fromLTRB(wide ? 36 : 22, wide ? 20 : 16, wide ? 36 : 22, wide ? 20 : 28),
+                        child: _LandingStory(wide: wide, onLogin: onLogin, onSignup: onSignup),
+                      ),
+                    ),
                   ),
                 ),
               );
@@ -214,7 +212,7 @@ class LandingScreen extends StatelessWidget {
   }
 }
 
-class _LandingStory extends StatelessWidget {
+class _LandingStory extends StatefulWidget {
   const _LandingStory({required this.wide, required this.onLogin, required this.onSignup});
 
   final bool wide;
@@ -222,72 +220,180 @@ class _LandingStory extends StatelessWidget {
   final VoidCallback onSignup;
 
   @override
+  State<_LandingStory> createState() => _LandingStoryState();
+}
+
+class _LandingStoryState extends State<_LandingStory> {
+  /// Real catalog names. Prices stay ₱1 until the public list answers.
+  List<(String, String)> bouquets = const [
+    ('Carnation Bouquet', '₱1'),
+    ('China Roses Bouquet', '₱1'),
+    ('Gerbera / Daisy Bouquet', '₱1'),
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadBouquets();
+  }
+
+  Future<void> _loadBouquets() async {
+    try {
+      final items = await ProductApi().fetchProducts();
+      if (!mounted || items.isEmpty) return;
+      final rows = <(String, String)>[];
+      for (final item in items) {
+        final name = item.name.trim();
+        if (name.isEmpty) continue;
+        rows.add((name, _landingPrice(item.priceLabel)));
+        if (rows.length == 3) break;
+      }
+      if (rows.isEmpty) return;
+      setState(() => bouquets = rows);
+    } catch (_) {
+      // Keep the three catalog rows already on screen.
+    }
+  }
+
+  String _landingPrice(String label) {
+    var text = label.trim();
+    if (text.isEmpty) return '₱1';
+    text = text.replaceFirst(RegExp(r'^Php\.?\s*', caseSensitive: false), '₱');
+    text = text.replaceAll(' ', '');
+    if (text.endsWith('.00')) text = text.substring(0, text.length - 3);
+    return text;
+  }
+
+  Widget _action(String label, VoidCallback onTap, {required bool primary}) {
+    return BloomTap(
+      onTap: onTap,
+      child: Container(
+        height: 52,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          gradient: primary ? Dream.petal : null,
+          color: primary ? null : Colors.white.withValues(alpha: 0.82),
+          borderRadius: BorderRadius.circular(18),
+          border: primary ? null : Border.all(color: Dream.blush),
+        ),
+        child: Text(
+          label,
+          style: F.ui(15, color: primary ? Colors.white : Dream.roseDeep, weight: FontWeight.w800),
+        ),
+      ),
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final intro = Column(
-      crossAxisAlignment: wide ? CrossAxisAlignment.start : CrossAxisAlignment.center,
+    final wide = widget.wide;
+    final align = wide ? CrossAxisAlignment.start : CrossAxisAlignment.center;
+    final textAlign = wide ? TextAlign.left : TextAlign.center;
+
+    final hero = Column(
+      crossAxisAlignment: align,
       children: [
-        const FlowerLogo(size: 72),
-        const SizedBox(height: 10),
-        Text('Amora', style: F.script(wide ? 92 : 72, color: Dream.roseDeep), textAlign: TextAlign.center),
+        const FlowerLogo(size: 58),
+        const SizedBox(height: 6),
+        Text('Amora', style: F.script(wide ? 78 : 64, color: Dream.roseDeep), textAlign: TextAlign.center),
         Transform.translate(
-          offset: const Offset(0, -8),
-          child: Text('Florals', style: F.display(wide ? 28 : 22, style: FontStyle.italic)),
+          offset: const Offset(0, -6),
+          child: Text('Florals', style: F.display(wide ? 24 : 20, style: FontStyle.italic)),
         ),
         const SizedBox(height: 8),
-        Text(
-          'Soft bouquets, wrapped for Quezon City.',
-          style: F.ui(wide ? 16 : 14, color: Dream.ink, height: 1.45),
-          textAlign: wide ? TextAlign.left : TextAlign.center,
-        ),
-        const SizedBox(height: 8),
-        Text(
-          'Pick a date, leave a note, and message the shop when you need something special.',
-          style: F.ui(13, color: Dream.mist, height: 1.5),
-          textAlign: wide ? TextAlign.left : TextAlign.center,
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 420),
+          child: Text(
+            'Customers order bouquets, pick a delivery time, and message the admin.',
+            style: F.ui(wide ? 16 : 14.5, color: Dream.ink, height: 1.45),
+            textAlign: textAlign,
+          ),
         ),
       ],
     );
 
-    final actions = Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _LandingPoint(icon: Icons.local_florist_rounded, title: 'Fresh arrangements', text: 'Real bouquets from the shop, not stock photos.'),
-        const SizedBox(height: 10),
-        _LandingPoint(icon: Icons.event_rounded, title: 'You choose the slot', text: 'Set the delivery date and time when you order.'),
-        const SizedBox(height: 10),
-        _LandingPoint(icon: Icons.chat_bubble_outline_rounded, title: 'Chat with admin', text: 'One thread with the shop. Replies land here.'),
-        const SizedBox(height: 18),
-        BloomTap(
-          onTap: onLogin,
-          child: Container(
-            height: 52,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(gradient: Dream.petal, borderRadius: BorderRadius.circular(18)),
-            child: Text('Log in', style: F.ui(15, color: Colors.white, weight: FontWeight.w800)),
+    final about = SoftGlass(
+      radius: 18,
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+      border: Dream.blush,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('WHAT THIS IS', style: F.ui(11, color: Dream.roseDeep, weight: FontWeight.w700, tracking: 1.5)),
+          const SizedBox(height: 6),
+          Text(
+            'Amora is the system for this Quezon City flower shop. Customers place bouquet orders here. The shop runs those orders, the stock, and the messages in the same place.',
+            style: F.ui(13.5, color: Dream.ink, height: 1.45),
           ),
-        ),
-        const SizedBox(height: 10),
-        BloomTap(
-          onTap: onSignup,
-          child: Container(
-            height: 52,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.8),
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: Dream.blush),
-            ),
-            child: Text('Create account', style: F.ui(15, color: Dream.roseDeep, weight: FontWeight.w800)),
-          ),
-        ),
-      ],
+        ],
+      ),
     );
+
+    final counter = SoftGlass(
+      radius: 18,
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+      border: Dream.blush,
+      glow: Dream.rose,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('IN THE SHOP', style: F.ui(11, color: Dream.roseDeep, weight: FontWeight.w700, tracking: 1.5)),
+          const SizedBox(height: 2),
+          Text('A few bouquets on the counter.', style: F.ui(12, color: Dream.mist)),
+          const SizedBox(height: 8),
+          for (var i = 0; i < bouquets.length; i++)
+            Container(
+              padding: const EdgeInsets.symmetric(vertical: 9),
+              decoration: BoxDecoration(
+                border: Border(bottom: BorderSide(color: Dream.blush.withValues(alpha: i == bouquets.length - 1 ? 0 : 0.85))),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(bouquets[i].$1, style: F.display(17), maxLines: 1, overflow: TextOverflow.ellipsis),
+                  ),
+                  const SizedBox(width: 12),
+                  Text(bouquets[i].$2, style: F.ui(14, color: Dream.roseDeep, weight: FontWeight.w800)),
+                ],
+              ),
+            ),
+          const SizedBox(height: 12),
+          Text('WHAT YOU CAN DO', style: F.ui(11, color: Dream.roseDeep, weight: FontWeight.w700, tracking: 1.5)),
+          const SizedBox(height: 8),
+          const _LandingPoint(icon: Icons.local_florist_rounded, title: 'Order', text: 'Choose a bouquet from the shop.'),
+          const _LandingPoint(icon: Icons.event_rounded, title: 'Delivery', text: 'Set the date and the time.'),
+          const _LandingPoint(icon: Icons.chat_bubble_outline_rounded, title: 'Message', text: 'Write the admin in one thread.'),
+        ],
+      ),
+    );
+
+    final actions = wide
+        ? Row(
+            children: [
+              Expanded(child: _action('Log in', widget.onLogin, primary: true)),
+              const SizedBox(width: 10),
+              Expanded(child: _action('Create account', widget.onSignup, primary: false)),
+            ],
+          )
+        : Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _action('Log in', widget.onLogin, primary: true),
+              const SizedBox(height: 10),
+              _action('Create account', widget.onSignup, primary: false),
+            ],
+          );
 
     if (!wide) {
       return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          intro,
-          const SizedBox(height: 22),
+          hero,
+          const SizedBox(height: 16),
+          about,
+          const SizedBox(height: 16),
+          counter,
+          const SizedBox(height: 16),
           actions,
         ],
       );
@@ -296,16 +402,20 @@ class _LandingStory extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        Expanded(child: intro),
-        const SizedBox(width: 36),
         Expanded(
-          child: SoftGlass(
-            radius: 32,
-            padding: const EdgeInsets.fromLTRB(22, 22, 22, 22),
-            glow: Dream.rose,
-            child: actions,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              hero,
+              const SizedBox(height: 16),
+              about,
+              const SizedBox(height: 14),
+              actions,
+            ],
           ),
         ),
+        const SizedBox(width: 28),
+        Expanded(child: counter),
       ],
     );
   }
@@ -320,24 +430,23 @@ class _LandingPoint extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SoftGlass(
-      radius: 18,
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
       child: Row(
         children: [
           Container(
-            width: 40,
-            height: 40,
+            width: 36,
+            height: 36,
             decoration: BoxDecoration(color: Dream.blush.withValues(alpha: 0.55), shape: BoxShape.circle),
-            child: Icon(icon, color: Dream.roseDeep, size: 20),
+            child: Icon(icon, color: Dream.roseDeep, size: 18),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 10),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(title, style: F.display(16)),
-                Text(text, style: F.ui(12, color: Dream.mist, height: 1.35)),
+                Text(text, style: F.ui(12, color: Dream.mist, height: 1.3)),
               ],
             ),
           ),

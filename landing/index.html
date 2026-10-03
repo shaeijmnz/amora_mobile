@@ -36,31 +36,32 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      padding: 28px 22px 36px;
+      padding: 20px 22px 32px;
     }
     .story {
-      width: min(1040px, 100%);
-      display: flex;
-      flex-direction: column;
+      width: min(980px, 100%);
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 16px;
       align-items: center;
-      text-align: center;
-      gap: 22px;
     }
+    .intro { text-align: center; }
     .mark {
-      width: 72px;
-      height: 72px;
+      width: 58px;
+      height: 58px;
+      margin: 0 auto;
       border-radius: 50%;
       display: grid;
       place-items: center;
       color: #fff;
       background: linear-gradient(135deg, var(--rose), var(--rose-deep) 55%, var(--terracotta));
       box-shadow: 0 10px 24px rgba(201, 123, 133, 0.28);
-      font-size: 30px;
+      font-size: 26px;
     }
     h1 {
       font-family: Allura, cursive;
       font-weight: 400;
-      font-size: 72px;
+      font-size: 64px;
       line-height: 0.9;
       color: var(--rose-deep);
       margin: 8px 0 0;
@@ -68,43 +69,79 @@
     .florals {
       font-family: "Cormorant Garamond", serif;
       font-style: italic;
-      font-size: 22px;
-      margin-top: -6px;
+      font-size: 20px;
+      margin-top: -4px;
     }
-    .lead { margin: 8px 0 0; font-size: 15px; line-height: 1.45; }
-    .sub { margin: 8px 0 0; color: var(--mist); font-size: 13px; line-height: 1.5; max-width: 420px; }
-    .card {
-      width: min(420px, 100%);
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
+    .lead {
+      margin: 10px auto 0;
+      max-width: 420px;
+      font-size: 15px;
+      line-height: 1.45;
     }
-    .point, .glass {
-      background: rgba(255, 255, 255, 0.82);
-      border: 1px solid rgba(240, 196, 200, 0.9);
-      box-shadow: 0 10px 30px rgba(201, 123, 133, 0.08);
-    }
-    .point {
+    .glass {
+      background: rgba(255, 251, 248, 0.92);
+      border: 1px solid var(--blush);
       border-radius: 18px;
-      padding: 12px 14px;
-      display: flex;
-      gap: 12px;
+      box-shadow: 0 10px 24px rgba(201, 123, 133, 0.1);
       text-align: left;
+    }
+    .about { padding: 14px 16px 16px; }
+    .panel { padding: 14px 16px 8px; }
+    .kicker {
+      margin: 0;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      color: var(--rose-deep);
+    }
+    .about p, .hint {
+      margin: 6px 0 0;
+      font-size: 13.5px;
+      line-height: 1.45;
+    }
+    .hint { color: var(--mist); font-size: 12px; margin-top: 2px; }
+    .menu { list-style: none; margin: 8px 0 0; padding: 0; }
+    .menu li {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: baseline;
+      padding: 9px 0;
+      border-bottom: 1px solid rgba(240, 196, 200, 0.85);
+      font-family: "Cormorant Garamond", serif;
+      font-size: 17px;
+      font-weight: 600;
+    }
+    .menu li:last-child { border-bottom: 0; }
+    .menu b {
+      font-family: Quicksand, sans-serif;
+      font-size: 14px;
+      color: var(--rose-deep);
+      font-weight: 700;
+    }
+    .do { margin: 12px 0 4px; }
+    .point {
+      display: flex;
+      gap: 10px;
       align-items: center;
+      padding-bottom: 8px;
     }
     .point .icon {
-      width: 40px;
-      height: 40px;
+      width: 36px;
+      height: 36px;
       border-radius: 50%;
       flex: none;
       display: grid;
       place-items: center;
       background: rgba(240, 196, 200, 0.55);
       color: var(--rose-deep);
-      font-size: 18px;
+      font-size: 16px;
     }
-    .point strong { display: block; font-family: "Cormorant Garamond", serif; font-size: 16px; }
-    .point span { display: block; color: var(--mist); font-size: 12px; line-height: 1.35; margin-top: 2px; }
+    .point strong { display: block; font-family: "Cormorant Garamond", serif; font-size: 16px; font-weight: 600; }
+    .point span { display: block; color: var(--mist); font-size: 12px; line-height: 1.3; }
+    .actions { display: flex; flex-direction: column; gap: 10px; }
+    .desk-actions { display: none; }
+    .phone-actions { margin-top: 16px; }
     a.btn {
       height: 52px;
       border-radius: 18px;
@@ -121,26 +158,20 @@
     }
     a.ghost {
       color: var(--rose-deep);
-      background: rgba(255, 255, 255, 0.8);
+      background: rgba(255, 255, 255, 0.82);
       border: 1px solid var(--blush);
     }
     @media (min-width: 860px) {
-      .story {
-        flex-direction: row;
-        align-items: center;
-        text-align: left;
-        gap: 36px;
-      }
-      .intro { flex: 1; }
-      h1 { font-size: 92px; }
-      .florals { font-size: 28px; }
-      .lead { font-size: 16px; }
-      .glass {
-        flex: 1;
-        border-radius: 32px;
-        padding: 22px;
-      }
-      .card { width: 100%; }
+      .wrap { padding: 20px 36px; }
+      .story { grid-template-columns: 1fr 1fr; gap: 28px; }
+      .intro { text-align: left; }
+      .mark { margin: 0; }
+      h1 { font-size: 78px; }
+      .florals { font-size: 24px; }
+      .lead { margin-left: 0; font-size: 16px; }
+      .desk-actions { display: flex; flex-direction: row; }
+      .desk-actions a { flex: 1; }
+      .phone-actions { display: none; }
     }
   </style>
 </head>
@@ -151,39 +182,84 @@
   <span class="spark" style="bottom: 10%; right: 18%;">✦</span>
   <main class="wrap">
     <section class="story">
-      <div class="intro">
-        <div class="mark" aria-hidden="true">✿</div>
-        <h1>Amora</h1>
-        <div class="florals">Florals</div>
-        <p class="lead">Soft bouquets, wrapped for Quezon City.</p>
-        <p class="sub">Pick a date, leave a note, and message the shop when you need something special.</p>
+      <div>
+        <div class="intro">
+          <div class="mark" aria-hidden="true">✿</div>
+          <h1>Amora</h1>
+          <div class="florals">Florals</div>
+          <p class="lead">Customers order bouquets, pick a delivery time, and message the admin.</p>
+        </div>
+        <div class="glass about" style="margin-top: 16px;">
+          <p class="kicker">WHAT THIS IS</p>
+          <p>Amora is the system for this Quezon City flower shop. Customers place bouquet orders here. The shop runs those orders, the stock, and the messages in the same place.</p>
+        </div>
+        <div class="actions desk-actions" style="margin-top: 14px;">
+          <a class="btn primary" href="/">Log in</a>
+          <a class="btn ghost" href="/">Create account</a>
+        </div>
       </div>
-      <div class="glass card">
+      <div class="glass panel">
+        <p class="kicker">IN THE SHOP</p>
+        <p class="hint">A few bouquets on the counter.</p>
+        <ul class="menu" id="bouquets">
+          <li><span>Carnation Bouquet</span><b>₱1</b></li>
+          <li><span>China Roses Bouquet</span><b>₱1</b></li>
+          <li><span>Gerbera / Daisy Bouquet</span><b>₱1</b></li>
+        </ul>
+        <p class="kicker do">WHAT YOU CAN DO</p>
         <article class="point">
           <div class="icon">✿</div>
           <div>
-            <strong>Fresh arrangements</strong>
-            <span>Real bouquets from the shop, not stock photos.</span>
+            <strong>Order</strong>
+            <span>Choose a bouquet from the shop.</span>
           </div>
         </article>
         <article class="point">
           <div class="icon">▦</div>
           <div>
-            <strong>You choose the slot</strong>
-            <span>Set the delivery date and time when you order.</span>
+            <strong>Delivery</strong>
+            <span>Set the date and the time.</span>
           </div>
         </article>
         <article class="point">
           <div class="icon">✉</div>
           <div>
-            <strong>Chat with admin</strong>
-            <span>One thread with the shop. Replies land here.</span>
+            <strong>Message</strong>
+            <span>Write the admin in one thread.</span>
           </div>
         </article>
+      </div>
+      <div class="actions phone-actions">
         <a class="btn primary" href="/">Log in</a>
         <a class="btn ghost" href="/">Create account</a>
       </div>
     </section>
   </main>
+  <script>
+    function peso(label) {
+      var text = String(label || '').trim();
+      if (!text) return '₱1';
+      text = text.replace(/^Php\.?\s*/i, '₱').replace(/\s/g, '');
+      if (text.slice(-3) === '.00') text = text.slice(0, -3);
+      return text;
+    }
+    function escapeHtml(value) {
+      return String(value).replace(/[&<>"']/g, function (ch) {
+        return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch];
+      });
+    }
+    fetch('/api/products', { headers: { Accept: 'application/json' } })
+      .then(function (res) { return res.ok ? res.json() : null; })
+      .then(function (body) {
+        var rows = ((body && body.data) || []).filter(function (item) {
+          return item && String(item.name || '').trim();
+        }).slice(0, 3);
+        if (!rows.length) return;
+        document.getElementById('bouquets').innerHTML = rows.map(function (item) {
+          return '<li><span>' + escapeHtml(item.name) + '</span><b>' + escapeHtml(peso(item.price_label)) + '</b></li>';
+        }).join('');
+      })
+      .catch(function () {});
+  </script>
 </body>
 </html>
