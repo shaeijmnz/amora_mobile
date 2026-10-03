@@ -110,6 +110,16 @@ class AdminNotifier
         );
     }
 
+    public function customerMessaged(string $customerName, string $body, int $messageId): void
+    {
+        $this->push(
+            category: 'messages',
+            title: "New message from {$customerName}",
+            body: $body,
+            dedupeKey: "message:{$messageId}",
+        );
+    }
+
     public function system(string $title, ?string $body = null): void
     {
         $this->push(category: 'system', title: $title, body: $body);

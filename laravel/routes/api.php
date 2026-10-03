@@ -6,12 +6,14 @@ use App\Http\Controllers\Api\Admin\CustomRequestController as AdminCustomRequest
 use App\Http\Controllers\Api\Admin\DashboardController as AdminDashboardController;
 use App\Http\Controllers\Api\Admin\DeliveryController as AdminDeliveryController;
 use App\Http\Controllers\Api\Admin\InventoryController as AdminInventoryController;
+use App\Http\Controllers\Api\Admin\MessageController as AdminMessageController;
 use App\Http\Controllers\Api\Admin\NotificationController as AdminNotificationController;
 use App\Http\Controllers\Api\Admin\OrderController as AdminOrderController;
 use App\Http\Controllers\Api\Admin\ProductController as AdminProductController;
 use App\Http\Controllers\Api\Admin\ReportController as AdminReportController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\CustomRequestController;
+use App\Http\Controllers\Api\MessageController;
 use App\Http\Controllers\Api\OrderController;
 use App\Http\Controllers\Api\PayMongoWebhookController;
 use App\Http\Controllers\Api\ProductController;
@@ -55,6 +57,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/custom-requests', [CustomRequestController::class, 'index']);
     Route::post('/custom-requests', [CustomRequestController::class, 'store']);
 
+    Route::get('/messages', [MessageController::class, 'show']);
+    Route::post('/messages', [MessageController::class, 'store']);
+
     // Admin API
     Route::prefix('admin')->middleware('admin')->group(function () {
         Route::get('/me', [AdminAuthController::class, 'me']);
@@ -80,6 +85,11 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/custom-requests/{customRequest}', [AdminCustomRequestController::class, 'show']);
         Route::patch('/custom-requests/{customRequest}', [AdminCustomRequestController::class, 'update']);
         Route::get('/reports', [AdminReportController::class, 'index']);
+        Route::get('/messages/unread-count', [AdminMessageController::class, 'unreadCount']);
+        Route::get('/messages', [AdminMessageController::class, 'index']);
+        Route::get('/messages/{conversation}', [AdminMessageController::class, 'show']);
+        Route::post('/messages/{conversation}', [AdminMessageController::class, 'store']);
+
         Route::get('/notifications', [AdminNotificationController::class, 'index']);
         Route::get('/notifications/unread-count', [AdminNotificationController::class, 'unreadCount']);
         Route::post('/notifications/read-all', [AdminNotificationController::class, 'markAllRead']);

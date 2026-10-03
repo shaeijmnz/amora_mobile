@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
 
@@ -9,6 +10,7 @@ import 'package:amora_florals_mobile/auth.dart';
 import 'package:amora_florals_mobile/services/api_config.dart';
 import 'package:amora_florals_mobile/services/auth_api.dart';
 import 'package:amora_florals_mobile/services/custom_request_api.dart';
+import 'package:amora_florals_mobile/services/message_api.dart';
 import 'package:amora_florals_mobile/services/order_api.dart';
 import 'package:amora_florals_mobile/services/product_api.dart';
 import 'package:amora_florals_mobile/web_url_clean.dart';
@@ -521,99 +523,47 @@ class ChatThread {
 
 class ChatMessage {
   const ChatMessage({
+    this.id,
     required this.text,
     required this.mine,
     required this.time,
   });
 
+  final int? id;
   final String text;
   final bool mine;
   final String time;
 }
 
-List<ChatThread> seedThreads() => [
-  ChatThread(
+ChatThread studioThread({
+  String preview = 'Ask the shop about a bouquet or an order.',
+  String time = '',
+  int unread = 0,
+  List<ChatMessage> messages = const [],
+}) {
+  return ChatThread(
     id: 'amora',
     name: 'Amora Studio',
-    role: 'Boutique florist',
-    avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=200',
-    preview: 'We can wrap your roses in a blush box ✨',
-    time: '2m',
-    unread: 2,
+    role: 'Shop admin',
+    avatar: '',
+    preview: preview,
+    time: time,
+    unread: unread,
     online: true,
-    messages: const [
-      ChatMessage(
-        text: 'Hi love! Looking for anniversary blooms?',
-        mine: false,
-        time: '10:02',
-      ),
-      ChatMessage(
-        text: 'Yes — soft china roses, something dreamy.',
-        mine: true,
-        time: '10:04',
-      ),
-      ChatMessage(
-        text: 'We can wrap your roses in a blush box ✨',
-        mine: false,
-        time: '10:05',
-      ),
-      ChatMessage(
-        text: 'Same-day Quezon City delivery is open until 4pm.',
-        mine: false,
-        time: '10:06',
-      ),
-    ],
-  ),
-  ChatThread(
-    id: 'mira',
-    name: 'Mira',
-    role: 'Floral stylist',
-    avatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=200',
-    preview: 'Your lavender bundle is being arranged.',
-    time: '1h',
-    unread: 0,
-    online: true,
-    messages: const [
-      ChatMessage(
-        text: 'Your lavender bundle is being arranged.',
-        mine: false,
-        time: '09:20',
-      ),
-      ChatMessage(
-        text: 'Thank you! Can you add a handwritten note?',
-        mine: true,
-        time: '09:22',
-      ),
-      ChatMessage(
-        text: 'Of course — leave the message anytime 💌',
-        mine: false,
-        time: '09:23',
-      ),
-    ],
-  ),
-  ChatThread(
-    id: 'support',
-    name: 'Bloom Concierge',
-    role: 'Order support',
-    avatar: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=200',
-    preview: 'Payment confirmed via GCash.',
-    time: 'Yesterday',
-    unread: 0,
-    online: false,
-    messages: const [
-      ChatMessage(
-        text: 'Payment confirmed via GCash.',
-        mine: false,
-        time: '18:40',
-      ),
-      ChatMessage(
-        text: 'Perfect, thank you!',
-        mine: true,
-        time: '18:41',
-      ),
-    ],
-  ),
-];
+    messages: messages,
+  );
+}
+
+ChatThread threadFromShop(ShopThread shop) {
+  return studioThread(
+    preview: shop.preview,
+    time: shop.time,
+    unread: shop.unread,
+    messages: shop.messages
+        .map((m) => ChatMessage(id: m.id, text: m.body, mine: m.mine, time: m.time))
+        .toList(),
+  );
+}
 
 // ═══════════════════════════════════════════
 // Dreamy world atmosphere
@@ -1504,17 +1454,19 @@ class MainShell extends StatefulWidget {
 
 class _MainShellState extends State<MainShell> {
   int index = 0;
-  late List<ChatThread> threads;
+  List<ChatThread> threads = [studioThread()];
   late WishlistController wishlist;
   late CartController cart;
+  Timer? _messagePoll;
 
   @override
   void initState() {
     super.initState();
-    threads = seedThreads();
     wishlist = WishlistController();
     cart = CartController();
     _loadCatalog();
+    _loadThread();
+    _messagePoll = Timer.periodic(const Duration(seconds: 8), (_) => _loadThread());
   }
 
   Future<void> _loadCatalog() async {
@@ -1576,45 +1528,51 @@ class _MainShellState extends State<MainShell> {
 
   @override
   void dispose() {
+    _messagePoll?.cancel();
     wishlist.dispose();
     cart.dispose();
     super.dispose();
   }
 
+  Future<void> _loadThread() async {
+    try {
+      final shop = await MessageApi().fetch();
+      if (!mounted) return;
+      setState(() => threads = [threadFromShop(shop)]);
+    } catch (_) {
+      // Keep the Amora Studio thread so the inbox still opens offline.
+    }
+  }
+
+  void _rememberThread(ChatThread next) {
+    if (!mounted) return;
+    setState(() => threads = [next]);
+  }
+
+  Future<void> _openStudioChat({String? productHint}) async {
+    if (productHint != null) {
+      try {
+        final shop = await MessageApi().send('Hi! I\'d love to ask about $productHint');
+        _rememberThread(threadFromShop(shop));
+      } catch (_) {}
+    } else {
+      await _loadThread();
+    }
+    if (!mounted) return;
+    final thread = threads.isEmpty ? studioThread() : threads.first;
+    await Navigator.push(
+      context,
+      _dreamRoute(ChatRoomScreen(
+        thread: thread,
+        onUpdated: _rememberThread,
+      )),
+    );
+    _loadThread();
+  }
+
   void _openInbox({String? focusId, String? productHint}) {
     if (focusId != null || productHint != null) {
-      final thread = threads.firstWhere(
-        (t) => t.id == (focusId ?? 'amora'),
-        orElse: () => threads.first,
-      );
-      var msgs = List<ChatMessage>.from(thread.messages);
-      if (productHint != null) {
-        msgs = [
-          ...msgs,
-          ChatMessage(
-            text: 'Hi! I\'d love to ask about $productHint 🌷',
-            mine: true,
-            time: 'now',
-          ),
-        ];
-      }
-      Navigator.push(
-        context,
-        _dreamRoute(ChatRoomScreen(
-          thread: ChatThread(
-            id: thread.id,
-            name: thread.name,
-            role: thread.role,
-            avatar: thread.avatar,
-            preview: thread.preview,
-            time: thread.time,
-            unread: 0,
-            online: thread.online,
-            messages: msgs,
-          ),
-          onSend: (text) {},
-        )),
-      );
+      _openStudioChat(productHint: productHint);
       return;
     }
     setState(() => index = 2);
@@ -1643,33 +1601,15 @@ class _MainShellState extends State<MainShell> {
       const MyOrdersScreen(),
       InboxScreen(
         threads: threads,
-        onOpen: (t) => Navigator.push(
-          context,
-          _dreamRoute(ChatRoomScreen(
-            thread: t,
-            onSend: (text) {
-              setState(() {
-                final i = threads.indexWhere((x) => x.id == t.id);
-                if (i >= 0) {
-                  threads[i] = ChatThread(
-                    id: t.id,
-                    name: t.name,
-                    role: t.role,
-                    avatar: t.avatar,
-                    preview: text,
-                    time: 'now',
-                    unread: 0,
-                    online: t.online,
-                    messages: [
-                      ...t.messages,
-                      ChatMessage(text: text, mine: true, time: 'now'),
-                    ],
-                  );
-                }
-              });
-            },
-          )),
-        ),
+        onOpen: (t) {
+          Navigator.push(
+            context,
+            _dreamRoute(ChatRoomScreen(
+              thread: t,
+              onUpdated: _rememberThread,
+            )),
+          ).then((_) => _loadThread());
+        },
       ),
       WishlistScreen(
         onBrowse: () => setState(() => index = 0),
@@ -1750,25 +1690,47 @@ class _MainShellState extends State<MainShell> {
                     top: 0,
                     child: BloomTap(
                       onTap: () => setState(() => index = 2),
-                      child: Container(
-                        width: 58,
-                        height: 58,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          gradient: Dream.petal,
-                          boxShadow: [
-                            BoxShadow(
-                              color: Dream.rose.withValues(alpha: 0.45),
-                              blurRadius: 18,
-                              offset: const Offset(0, 6),
+                      child: Stack(
+                        clipBehavior: Clip.none,
+                        children: [
+                          Container(
+                            width: 58,
+                            height: 58,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              gradient: Dream.petal,
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Dream.rose.withValues(alpha: 0.45),
+                                  blurRadius: 18,
+                                  offset: const Offset(0, 6),
+                                ),
+                              ],
                             ),
-                          ],
-                        ),
-                        child: const Icon(
-                          Icons.local_florist_rounded,
-                          color: Colors.white,
-                          size: 28,
-                        ),
+                            child: const Icon(
+                              Icons.local_florist_rounded,
+                              color: Colors.white,
+                              size: 28,
+                            ),
+                          ),
+                          if (threads.any((t) => t.unread > 0))
+                            Positioned(
+                              right: -2,
+                              top: -2,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: Dream.roseDeep,
+                                  borderRadius: BorderRadius.circular(999),
+                                  border: Border.all(color: Colors.white, width: 2),
+                                ),
+                                child: Text(
+                                  '${threads.fold<int>(0, (sum, t) => sum + t.unread)}',
+                                  style: F.ui(10, color: Colors.white, weight: FontWeight.w800),
+                                ),
+                              ),
+                            ),
+                        ],
                       ),
                     ),
                   ),
@@ -5784,14 +5746,27 @@ class _PaymentReturnScreenState extends State<PaymentReturnScreen> {
 // ═══════════════════════════════════════════
 // MESSAGING — Inbox + Chat Room
 // ═══════════════════════════════════════════
-class InboxScreen extends StatelessWidget {
+class InboxScreen extends StatefulWidget {
   const InboxScreen({super.key, required this.threads, required this.onOpen});
 
   final List<ChatThread> threads;
   final ValueChanged<ChatThread> onOpen;
 
   @override
+  State<InboxScreen> createState() => _InboxScreenState();
+}
+
+class _InboxScreenState extends State<InboxScreen> {
+  String query = '';
+
+  @override
   Widget build(BuildContext context) {
+    final threads = widget.threads.where((t) {
+      final q = query.trim().toLowerCase();
+      if (q.isEmpty) return true;
+      return t.name.toLowerCase().contains(q) || t.preview.toLowerCase().contains(q);
+    }).toList();
+
     return SafeArea(
       bottom: false,
       child: Column(
@@ -5806,7 +5781,7 @@ class InboxScreen extends StatelessWidget {
                   Text('Messages', style: F.script(44, color: Dream.roseDeep)),
                   const SizedBox(height: 6),
                   Text(
-                    'Chat with florists, track blooms, leave love notes.',
+                    'Message the shop. Replies from the admin show up here.',
                     style: F.ui(13, color: Dream.mist),
                   ),
                 ],
@@ -5821,6 +5796,7 @@ class InboxScreen extends StatelessWidget {
               child: TextField(
                 style: F.ui(13),
                 cursorColor: Dream.roseDeep,
+                onChanged: (value) => setState(() => query = value),
                 decoration: InputDecoration(
                   border: InputBorder.none,
                   hintText: 'Search conversations',
@@ -5843,7 +5819,7 @@ class InboxScreen extends StatelessWidget {
                   child: Padding(
                     padding: const EdgeInsets.only(bottom: 12),
                     child: BloomTap(
-                      onTap: () => onOpen(t),
+                      onTap: () => widget.onOpen(t),
                       child: SoftGlass(
                         radius: 24,
                         padding: const EdgeInsets.all(14),
@@ -5858,10 +5834,7 @@ class InboxScreen extends StatelessWidget {
                                     shape: BoxShape.circle,
                                     gradient: Dream.petal,
                                   ),
-                                  child: CircleAvatar(
-                                    radius: 26,
-                                    backgroundImage: NetworkImage(t.avatar),
-                                  ),
+                                  child: _ThreadAvatar(url: t.avatar, radius: 26),
                                 ),
                                 if (t.online)
                                   Positioned(
@@ -5937,64 +5910,87 @@ class ChatRoomScreen extends StatefulWidget {
   const ChatRoomScreen({
     super.key,
     required this.thread,
-    required this.onSend,
+    required this.onUpdated,
   });
 
   final ChatThread thread;
-  final ValueChanged<String> onSend;
+  final ValueChanged<ChatThread> onUpdated;
 
   @override
   State<ChatRoomScreen> createState() => _ChatRoomScreenState();
 }
 
 class _ChatRoomScreenState extends State<ChatRoomScreen> {
-  late List<ChatMessage> messages = List.of(widget.thread.messages);
+  List<ChatMessage> messages = [];
   final controller = TextEditingController();
   final scroll = ScrollController();
+  Timer? _poll;
+  bool sending = false;
+
+  @override
+  void initState() {
+    super.initState();
+    messages = List.of(widget.thread.messages);
+    _refresh();
+    _poll = Timer.periodic(const Duration(seconds: 4), (_) => _refresh(silent: true));
+  }
 
   @override
   void dispose() {
+    _poll?.cancel();
     controller.dispose();
     scroll.dispose();
     super.dispose();
   }
 
-  void _send() {
-    final text = controller.text.trim();
-    if (text.isEmpty) return;
-    setState(() {
-      messages.add(ChatMessage(text: text, mine: true, time: 'now'));
-    });
-    widget.onSend(text);
-    controller.clear();
-    Future.delayed(const Duration(milliseconds: 80), () {
-      if (scroll.hasClients) {
-        scroll.animateTo(
-          scroll.position.maxScrollExtent + 80,
-          duration: const Duration(milliseconds: 320),
-          curve: Curves.easeOutCubic,
-        );
-      }
-    });
-
-    // soft florist reply
-    Future.delayed(const Duration(milliseconds: 1100), () {
+  Future<void> _refresh({bool silent = false}) async {
+    try {
+      final shop = await MessageApi().fetch(markRead: true);
       if (!mounted) return;
-      setState(() {
-        messages.add(const ChatMessage(
-          text: 'Noted with love — we\'ll keep it dreamy ✨',
-          mine: false,
-          time: 'now',
-        ));
-      });
-      if (scroll.hasClients) {
-        scroll.animateTo(
-          scroll.position.maxScrollExtent + 80,
-          duration: const Duration(milliseconds: 320),
-          curve: Curves.easeOutCubic,
-        );
-      }
+      final next = threadFromShop(shop);
+      setState(() => messages = next.messages);
+      widget.onUpdated(next);
+      if (!silent) _scrollDown();
+    } catch (error) {
+      if (silent || !mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.toString(), style: F.ui(13, color: Colors.white))),
+      );
+    }
+  }
+
+  void _scrollDown() {
+    Future.delayed(const Duration(milliseconds: 80), () {
+      if (!scroll.hasClients) return;
+      scroll.animateTo(
+        scroll.position.maxScrollExtent + 80,
+        duration: const Duration(milliseconds: 320),
+        curve: Curves.easeOutCubic,
+      );
     });
+  }
+
+  Future<void> _send() async {
+    final text = controller.text.trim();
+    if (text.isEmpty || sending) return;
+    setState(() => sending = true);
+    controller.clear();
+    try {
+      final shop = await MessageApi().send(text);
+      if (!mounted) return;
+      final next = threadFromShop(shop);
+      setState(() => messages = next.messages);
+      widget.onUpdated(next);
+      _scrollDown();
+    } catch (error) {
+      if (!mounted) return;
+      controller.text = text;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.toString(), style: F.ui(13, color: Colors.white))),
+      );
+    } finally {
+      if (mounted) setState(() => sending = false);
+    }
   }
 
   @override
@@ -6018,7 +6014,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                         child: const Icon(Icons.arrow_back_rounded, color: Dream.roseDeep),
                       ),
                       const SizedBox(width: 8),
-                      CircleAvatar(radius: 20, backgroundImage: NetworkImage(t.avatar)),
+                      _ThreadAvatar(url: t.avatar, radius: 20),
                       const SizedBox(width: 10),
                       Expanded(
                         child: Column(
@@ -6112,6 +6108,25 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
         ),
       ),
     );
+  }
+}
+
+class _ThreadAvatar extends StatelessWidget {
+  const _ThreadAvatar({required this.url, required this.radius});
+
+  final String url;
+  final double radius;
+
+  @override
+  Widget build(BuildContext context) {
+    if (url.isEmpty || url.contains('unsplash')) {
+      return CircleAvatar(
+        radius: radius,
+        backgroundColor: Dream.blush,
+        child: Icon(Icons.local_florist_rounded, color: Dream.roseDeep, size: radius),
+      );
+    }
+    return CircleAvatar(radius: radius, backgroundImage: NetworkImage(url));
   }
 }
 
