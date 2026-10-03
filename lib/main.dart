@@ -250,49 +250,52 @@ class _LandingStory extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        FlowerLogo(size: compact ? 52 : 64),
-        SizedBox(height: compact ? 2 : 8),
-        Text(
-          'Amora',
-          style: F.script(compact ? 60 : 76, color: Dream.roseDeep),
-          textAlign: TextAlign.center,
-        ),
-        Transform.translate(
-          offset: const Offset(0, -6),
-          child: Text(
-            'Florals',
-            style: F.display(compact ? 20 : 24, style: FontStyle.italic),
+    return SizedBox(
+      width: double.infinity,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          FlowerLogo(size: compact ? 52 : 64),
+          SizedBox(height: compact ? 2 : 8),
+          Text(
+            'Amora',
+            style: F.script(compact ? 60 : 76, color: Dream.roseDeep),
             textAlign: TextAlign.center,
           ),
-        ),
-        const SizedBox(height: 6),
-        Text(
-          'A flower shop in Quezon City.',
-          style: F.ui(compact ? 15 : 16, color: Dream.ink, height: 1.35),
-          textAlign: TextAlign.center,
-        ),
-        SizedBox(height: compact ? 14 : 18),
-        const SoftGlass(
-          radius: 18,
-          padding: EdgeInsets.fromLTRB(14, 12, 14, 6),
-          border: Dream.blush,
-          child: Column(
-            children: [
-              _LandingPoint(icon: Icons.local_florist_rounded, title: 'Order', text: 'Choose a bouquet from the shop.'),
-              _LandingPoint(icon: Icons.event_rounded, title: 'Delivery', text: 'Set the date and the time.'),
-              _LandingPoint(icon: Icons.chat_bubble_outline_rounded, title: 'Message', text: 'Write the admin in one thread.'),
-            ],
+          Transform.translate(
+            offset: const Offset(0, -6),
+            child: Text(
+              'Florals',
+              style: F.display(compact ? 20 : 24, style: FontStyle.italic),
+              textAlign: TextAlign.center,
+            ),
           ),
-        ),
-        SizedBox(height: compact ? 12 : 16),
-        _action('Log in', onLogin, primary: true),
-        const SizedBox(height: 10),
-        _action('Create account', onSignup, primary: false),
-      ],
+          const SizedBox(height: 6),
+          Text(
+            'A flower shop in Quezon City.',
+            style: F.ui(compact ? 15 : 16, color: Dream.ink, height: 1.35),
+            textAlign: TextAlign.center,
+          ),
+          SizedBox(height: compact ? 14 : 18),
+          const SoftGlass(
+            radius: 18,
+            padding: EdgeInsets.fromLTRB(14, 12, 14, 6),
+            border: Dream.blush,
+            child: Column(
+              children: [
+                _LandingPoint(icon: Icons.local_florist_rounded, title: 'Order', text: 'Choose a bouquet from the shop.'),
+                _LandingPoint(icon: Icons.event_rounded, title: 'Delivery', text: 'Set the date and the time.'),
+                _LandingPoint(icon: Icons.chat_bubble_outline_rounded, title: 'Message', text: 'Write the admin in one thread.'),
+              ],
+            ),
+          ),
+          SizedBox(height: compact ? 12 : 16),
+          _action('Log in', onLogin, primary: true),
+          const SizedBox(height: 10),
+          _action('Create account', onSignup, primary: false),
+        ],
+      ),
     );
   }
 }
