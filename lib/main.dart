@@ -271,13 +271,7 @@ class _LandingStory extends StatelessWidget {
               textAlign: TextAlign.center,
             ),
           ),
-          const SizedBox(height: 6),
-          Text(
-            'A flower shop in Quezon City.',
-            style: F.ui(compact ? 15 : 16, color: Dream.ink, height: 1.35),
-            textAlign: TextAlign.center,
-          ),
-          SizedBox(height: compact ? 14 : 18),
+          SizedBox(height: compact ? 16 : 20),
           const SoftGlass(
             radius: 18,
             padding: EdgeInsets.fromLTRB(14, 12, 14, 6),
